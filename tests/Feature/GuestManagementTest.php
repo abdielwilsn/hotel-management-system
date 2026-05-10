@@ -4,6 +4,7 @@ use App\Models\Guest;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 
 uses(RefreshDatabase::class);
 
@@ -199,4 +200,31 @@ test('users cannot update guests from another team', function () {
             'loyalty_points' => 0,
         ])
         ->assertForbidden();
+});
+
+test('guests index can be filtered by loyalty tier and search', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+
+    $matchingGuest = Guest::factory()->create([
+        'team_id' => $team->id,
+        'first_name' => 'Lara',
+        'last_name' => 'Stone',
+        'loyalty_tier' => 'gold',
+    ]);
+
+    Guest::factory()->create([
+        'team_id' => $team->id,
+        'first_name' => 'Milo',
+        'last_name' => 'Doe',
+        'loyalty_tier' => 'standard',
+    ]);
+
+    $this->actingAs($user)
+        ->get("/{$team->slug}/guests?loyalty_tier=gold&search=Lara")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('guests.0.id', $matchingGuest->id)
+            ->where('guests', fn ($guests) => count($guests) === 1));
 });

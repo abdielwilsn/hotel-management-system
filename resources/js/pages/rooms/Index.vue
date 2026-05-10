@@ -1,18 +1,12 @@
 <script setup lang="ts">
-import { useForm, Head, Link, usePage } from '@inertiajs/vue3';
+import { useForm, Link, usePage } from '@inertiajs/vue3';
 import { Plus, Home, Trash2, Edit } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -41,12 +35,22 @@ type Room = {
     price_per_night: number;
     status: string;
     description: string | null;
+    active_booking: {
+        id: number;
+        guest_name: string;
+        check_in_date: string | null;
+        check_out_date: string | null;
+    } | null;
 };
 
 type Props = {
     rooms: Room[];
     roomTypes: string[];
     statuses: string[];
+    occupancySummary: {
+        occupied_rooms: number;
+        checked_in_bookings: number;
+    };
     team: {
         id: number;
         slug: string;
@@ -107,6 +111,18 @@ const statusColor = (status: string) => {
     return colors[status] || 'bg-gray-100 text-gray-800';
 };
 
+const formatDate = (date: string | null) => {
+    if (!date) {
+        return 'N/A';
+    }
+
+    return new Date(date).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+    });
+};
+
 const submit = () => {
     form.post(store(props.team.slug).url, {
         onSuccess: () => {
@@ -134,6 +150,29 @@ const deleteRoom = () => {
             title="Room Management"
             description="Manage your hotel rooms and availability"
         />
+
+        <div class="grid gap-4 sm:grid-cols-2">
+            <Card>
+                <CardHeader class="pb-2">
+                    <CardTitle class="text-sm text-muted-foreground"
+                        >Currently Occupied Rooms</CardTitle
+                    >
+                </CardHeader>
+                <CardContent class="text-3xl font-semibold">
+                    {{ occupancySummary.occupied_rooms }}
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader class="pb-2">
+                    <CardTitle class="text-sm text-muted-foreground"
+                        >Checked-in Bookings</CardTitle
+                    >
+                </CardHeader>
+                <CardContent class="text-3xl font-semibold">
+                    {{ occupancySummary.checked_in_bookings }}
+                </CardContent>
+            </Card>
+        </div>
 
         <!-- Create useForm -->
         <Card v-if="showCreateForm" class="border-hotel-primary/20">
@@ -343,6 +382,31 @@ const deleteRoom = () => {
                             <strong>Description:</strong>
                             {{ room.description }}
                         </p>
+                        <template
+                            v-if="
+                                room.status === 'occupied' &&
+                                room.active_booking
+                            "
+                        >
+                            <p>
+                                <strong>Occupied By:</strong>
+                                {{ room.active_booking.guest_name }}
+                            </p>
+                            <p>
+                                <strong>Stay:</strong>
+                                {{
+                                    formatDate(
+                                        room.active_booking.check_in_date,
+                                    )
+                                }}
+                                -
+                                {{
+                                    formatDate(
+                                        room.active_booking.check_out_date,
+                                    )
+                                }}
+                            </p>
+                        </template>
                     </div>
                     <div class="flex gap-2 pt-2">
                         <Link

@@ -5,6 +5,7 @@ use App\Models\Room;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 
 uses(RefreshDatabase::class);
 
@@ -294,4 +295,63 @@ test('room status updates to available when booking is deleted', function () {
         'id' => $room->id,
         'status' => 'available',
     ]);
+});
+
+test('bookings index can be filtered by payment status and check-in date', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+
+    $room = Room::factory()->create(['team_id' => $team->id]);
+
+    $unpaidBooking = Booking::factory()->create([
+        'team_id' => $team->id,
+        'room_id' => $room->id,
+        'check_in_date' => '2026-08-01',
+        'check_out_date' => '2026-08-03',
+    ]);
+
+    $paidBooking = Booking::factory()->create([
+        'team_id' => $team->id,
+        'room_id' => $room->id,
+        'check_in_date' => '2026-08-10',
+        'check_out_date' => '2026-08-12',
+    ]);
+
+    $team->invoices()->create([
+        'booking_id' => $unpaidBooking->id,
+        'invoice_number' => 'INV-FLT-0001',
+        'guest_name' => $unpaidBooking->guest_name,
+        'guest_email' => $unpaidBooking->guest_email,
+        'issue_date' => '2026-08-01',
+        'due_date' => '2026-08-02',
+        'subtotal' => 100,
+        'tax_amount' => 0,
+        'discount_amount' => 0,
+        'total_amount' => 100,
+        'paid_amount' => 0,
+        'status' => 'issued',
+    ]);
+
+    $team->invoices()->create([
+        'booking_id' => $paidBooking->id,
+        'invoice_number' => 'INV-FLT-0002',
+        'guest_name' => $paidBooking->guest_name,
+        'guest_email' => $paidBooking->guest_email,
+        'issue_date' => '2026-08-10',
+        'due_date' => '2026-08-11',
+        'subtotal' => 200,
+        'tax_amount' => 0,
+        'discount_amount' => 0,
+        'total_amount' => 200,
+        'paid_amount' => 200,
+        'status' => 'paid',
+    ]);
+
+    $this->actingAs($user)
+        ->get("/{$team->slug}/bookings?payment_status=paid&check_in_from=2026-08-05")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('bookings.0.id', $paidBooking->id)
+            ->where('bookings', fn ($bookings) => count($bookings) === 1));
 });

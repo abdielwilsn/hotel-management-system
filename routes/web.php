@@ -43,6 +43,8 @@ Route::prefix('{current_team}')
 
         Route::get('inventory', [InventoryController::class, 'index'])->name('inventory.index');
 
+        Route::inertia('usage-guide', 'UsageGuide')->name('usage-guide');
+
         Route::post('bookings', [BookingController::class, 'store'])->name('bookings.store');
         Route::post('bookings/{booking}/process-payment', [BookingController::class, 'processPayment'])->name('bookings.process-payment');
         Route::get('bookings/{booking}/edit', [BookingController::class, 'edit'])->name('bookings.edit');

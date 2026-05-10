@@ -10,6 +10,7 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Room;
 use App\Models\Team;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -25,6 +26,17 @@ class BookingController extends Controller
     {
         Gate::authorize('viewAny', [Booking::class, $current_team]);
 
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'status' => ['nullable', 'string', 'in:pending,confirmed,checked_in,checked_out,cancelled'],
+            'payment_status' => ['nullable', 'string', 'in:unpaid,partial,paid'],
+            'room_id' => ['nullable', 'integer'],
+            'check_in_from' => ['nullable', 'date'],
+            'check_in_to' => ['nullable', 'date'],
+            'check_out_from' => ['nullable', 'date'],
+            'check_out_to' => ['nullable', 'date'],
+        ]);
+
         $bookings = $current_team->bookings()
             ->with([
                 'room',
@@ -39,6 +51,64 @@ class BookingController extends Controller
                     ]);
                 },
             ])
+            ->when($filters['search'] ?? null, function (Builder $query, string $search): void {
+                $query->where(function (Builder $subQuery) use ($search): void {
+                    $subQuery
+                        ->where('guest_name', 'like', "%{$search}%")
+                        ->orWhere('guest_email', 'like', "%{$search}%")
+                        ->orWhere('guest_phone', 'like', "%{$search}%")
+                        ->orWhereHas('room', function (Builder $roomQuery) use ($search): void {
+                            $roomQuery->where('room_number', 'like', "%{$search}%");
+                        });
+                });
+            })
+            ->when($filters['status'] ?? null, function (Builder $query, string $status): void {
+                $query->where('status', $status);
+            })
+            ->when($filters['room_id'] ?? null, function (Builder $query, int $roomId): void {
+                $query->where('room_id', $roomId);
+            })
+            ->when($filters['check_in_from'] ?? null, function (Builder $query, string $checkInFrom): void {
+                $query->whereDate('check_in_date', '>=', $checkInFrom);
+            })
+            ->when($filters['check_in_to'] ?? null, function (Builder $query, string $checkInTo): void {
+                $query->whereDate('check_in_date', '<=', $checkInTo);
+            })
+            ->when($filters['check_out_from'] ?? null, function (Builder $query, string $checkOutFrom): void {
+                $query->whereDate('check_out_date', '>=', $checkOutFrom);
+            })
+            ->when($filters['check_out_to'] ?? null, function (Builder $query, string $checkOutTo): void {
+                $query->whereDate('check_out_date', '<=', $checkOutTo);
+            })
+            ->when($filters['payment_status'] ?? null, function (Builder $query, string $paymentStatus): void {
+                if ($paymentStatus === 'unpaid') {
+                    $query->where(function (Builder $subQuery): void {
+                        $subQuery
+                            ->whereDoesntHave('invoice')
+                            ->orWhereHas('invoice', function (Builder $invoiceQuery): void {
+                                $invoiceQuery->where('paid_amount', '<=', 0);
+                            });
+                    });
+
+                    return;
+                }
+
+                if ($paymentStatus === 'partial') {
+                    $query->whereHas('invoice', function (Builder $invoiceQuery): void {
+                        $invoiceQuery
+                            ->where('paid_amount', '>', 0)
+                            ->whereColumn('paid_amount', '<', 'total_amount');
+                    });
+
+                    return;
+                }
+
+                $query->whereHas('invoice', function (Builder $invoiceQuery): void {
+                    $invoiceQuery
+                        ->whereColumn('paid_amount', '>=', 'total_amount')
+                        ->where('total_amount', '>', 0);
+                });
+            })
             ->orderByDesc('check_in_date')
             ->get();
 
@@ -49,6 +119,17 @@ class BookingController extends Controller
             'bookings' => $bookings,
             'rooms' => $rooms,
             'statuses' => $statuses,
+            'paymentStatuses' => ['unpaid', 'partial', 'paid'],
+            'filters' => Arr::only($filters, [
+                'search',
+                'status',
+                'payment_status',
+                'room_id',
+                'check_in_from',
+                'check_in_to',
+                'check_out_from',
+                'check_out_to',
+            ]),
             'team' => $current_team->only('id', 'slug', 'name'),
         ]);
     }

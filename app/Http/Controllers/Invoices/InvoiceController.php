@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Invoices\SaveInvoiceRequest;
 use App\Models\Invoice;
 use App\Models\Team;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -19,8 +21,64 @@ class InvoiceController extends Controller
     {
         Gate::authorize('viewAny', [Invoice::class, $current_team]);
 
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'status' => ['nullable', 'string', 'in:draft,issued,partially_paid,paid,overdue,void'],
+            'payment_status' => ['nullable', 'string', 'in:unpaid,partial,paid'],
+            'booking_id' => ['nullable', 'integer'],
+            'issue_date_from' => ['nullable', 'date'],
+            'issue_date_to' => ['nullable', 'date'],
+            'due_date_from' => ['nullable', 'date'],
+            'due_date_to' => ['nullable', 'date'],
+        ]);
+
         $invoices = $current_team->invoices()
             ->with('booking:id,guest_name')
+            ->when($filters['search'] ?? null, function (Builder $query, string $search): void {
+                $query->where(function (Builder $subQuery) use ($search): void {
+                    $subQuery
+                        ->where('invoice_number', 'like', "%{$search}%")
+                        ->orWhere('guest_name', 'like', "%{$search}%")
+                        ->orWhere('guest_email', 'like', "%{$search}%");
+                });
+            })
+            ->when($filters['status'] ?? null, function (Builder $query, string $status): void {
+                $query->where('status', $status);
+            })
+            ->when($filters['booking_id'] ?? null, function (Builder $query, int $bookingId): void {
+                $query->where('booking_id', $bookingId);
+            })
+            ->when($filters['issue_date_from'] ?? null, function (Builder $query, string $issueDateFrom): void {
+                $query->whereDate('issue_date', '>=', $issueDateFrom);
+            })
+            ->when($filters['issue_date_to'] ?? null, function (Builder $query, string $issueDateTo): void {
+                $query->whereDate('issue_date', '<=', $issueDateTo);
+            })
+            ->when($filters['due_date_from'] ?? null, function (Builder $query, string $dueDateFrom): void {
+                $query->whereDate('due_date', '>=', $dueDateFrom);
+            })
+            ->when($filters['due_date_to'] ?? null, function (Builder $query, string $dueDateTo): void {
+                $query->whereDate('due_date', '<=', $dueDateTo);
+            })
+            ->when($filters['payment_status'] ?? null, function (Builder $query, string $paymentStatus): void {
+                if ($paymentStatus === 'unpaid') {
+                    $query->where('paid_amount', '<=', 0);
+
+                    return;
+                }
+
+                if ($paymentStatus === 'partial') {
+                    $query
+                        ->where('paid_amount', '>', 0)
+                        ->whereColumn('paid_amount', '<', 'total_amount');
+
+                    return;
+                }
+
+                $query
+                    ->where('total_amount', '>', 0)
+                    ->whereColumn('paid_amount', '>=', 'total_amount');
+            })
             ->orderByDesc('issue_date')
             ->get();
 
@@ -34,6 +92,17 @@ class InvoiceController extends Controller
             'invoices' => $invoices,
             'bookings' => $bookings,
             'statuses' => $statuses,
+            'paymentStatuses' => ['unpaid', 'partial', 'paid'],
+            'filters' => Arr::only($filters, [
+                'search',
+                'status',
+                'payment_status',
+                'booking_id',
+                'issue_date_from',
+                'issue_date_to',
+                'due_date_from',
+                'due_date_to',
+            ]),
             'team' => $current_team->only('id', 'slug', 'name'),
         ]);
     }
@@ -108,7 +177,7 @@ class InvoiceController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     private function computeTotalAmount(array $data): float
     {

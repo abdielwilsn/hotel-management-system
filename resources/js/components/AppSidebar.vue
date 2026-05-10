@@ -3,6 +3,7 @@ import { Link, usePage } from '@inertiajs/vue3';
 import {
     Activity,
     BarChart3,
+    BookOpen,
     Building2,
     CalendarDays,
     CircleDollarSign,
@@ -27,6 +28,7 @@ import { index as payments } from '@/routes/payments';
 import { index as expenses } from '@/routes/expenses';
 import { index as guests } from '@/routes/guests';
 import { index as inventory } from '@/routes/inventory';
+import { usageGuide } from '@/routes';
 import { index as reports } from '@/routes/reports';
 import { index as forecasts } from '@/routes/forecasts';
 import {
@@ -122,6 +124,13 @@ const mainNavItems = computed<NavItem[]>(() => [
         icon: Package,
     },
     {
+        title: 'Usage Guide',
+        href: page.props.currentTeam
+            ? usageGuide(page.props.currentTeam.slug).url
+            : '/',
+        icon: BookOpen,
+    },
+    {
         title: 'Reports',
         href: page.props.currentTeam
             ? reports(page.props.currentTeam.slug).url
@@ -146,6 +155,7 @@ const operationsNavItems = computed<NavItem[]>(() =>
             'Rooms',
             'Guests',
             'Inventory',
+            'Usage Guide',
         ].includes(item.title),
     ),
 );

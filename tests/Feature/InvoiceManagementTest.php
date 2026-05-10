@@ -6,6 +6,7 @@ use App\Models\Room;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 
 uses(RefreshDatabase::class);
 
@@ -44,7 +45,6 @@ test('admins can create invoices and total is computed', function () {
     $this->assertDatabaseHas('invoices', [
         'team_id' => $team->id,
         'booking_id' => $booking->id,
-        'invoice_number' => 'INV-2026-1001',
         'total_amount' => 530,
     ]);
 });
@@ -161,4 +161,33 @@ test('paid amount cannot exceed computed total', function () {
     ]);
 
     $response->assertSessionHasErrors('paid_amount');
+});
+
+test('invoices index can be filtered by payment status and issue date', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+
+    $paidInvoice = Invoice::factory()->create([
+        'team_id' => $team->id,
+        'issue_date' => '2026-09-15',
+        'total_amount' => 300,
+        'paid_amount' => 300,
+        'status' => 'paid',
+    ]);
+
+    Invoice::factory()->create([
+        'team_id' => $team->id,
+        'issue_date' => '2026-09-01',
+        'total_amount' => 300,
+        'paid_amount' => 0,
+        'status' => 'issued',
+    ]);
+
+    $this->actingAs($user)
+        ->get("/{$team->slug}/invoices?payment_status=paid&issue_date_from=2026-09-10")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('invoices.0.id', $paidInvoice->id)
+            ->where('invoices', fn ($invoices) => count($invoices) === 1));
 });

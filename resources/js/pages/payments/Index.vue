@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useForm, Link, usePage } from '@inertiajs/vue3';
+import { useForm, Link, usePage, router } from '@inertiajs/vue3';
 import { CreditCard, Edit, Plus, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
@@ -59,6 +59,16 @@ type Props = {
     invoices: InvoiceOption[];
     methods: string[];
     statuses: string[];
+    filters: {
+        search?: string | null;
+        status?: string | null;
+        method?: string | null;
+        invoice_id?: number | null;
+        payment_date_from?: string | null;
+        payment_date_to?: string | null;
+        amount_min?: number | null;
+        amount_max?: number | null;
+    };
     team: { id: number; slug: string; name: string };
 };
 
@@ -86,6 +96,27 @@ const showCreateForm = ref(false);
 const showDeleteDialog = ref(false);
 const paymentToDelete = ref<Payment | null>(null);
 
+const filtersForm = useForm({
+    search: props.filters.search ?? '',
+    status: props.filters.status ?? 'all',
+    method: props.filters.method ?? 'all',
+    invoice_id: props.filters.invoice_id
+        ? String(props.filters.invoice_id)
+        : 'all',
+    payment_date_from: props.filters.payment_date_from ?? '',
+    payment_date_to: props.filters.payment_date_to ?? '',
+    amount_min:
+        props.filters.amount_min !== null &&
+        props.filters.amount_min !== undefined
+            ? String(props.filters.amount_min)
+            : '',
+    amount_max:
+        props.filters.amount_max !== null &&
+        props.filters.amount_max !== undefined
+            ? String(props.filters.amount_max)
+            : '',
+});
+
 const form = useForm({
     invoice_id: '',
     payment_date: '',
@@ -97,6 +128,61 @@ const form = useForm({
 });
 
 const deleteForm = useForm({});
+
+const hasActiveFilters = computed(() =>
+    Boolean(
+        filtersForm.search ||
+        filtersForm.status !== 'all' ||
+        filtersForm.method !== 'all' ||
+        filtersForm.invoice_id !== 'all' ||
+        filtersForm.payment_date_from ||
+        filtersForm.payment_date_to ||
+        filtersForm.amount_min ||
+        filtersForm.amount_max,
+    ),
+);
+
+const applyFilters = () => {
+    router.get(
+        index(props.team.slug).url,
+        {
+            search: filtersForm.search || undefined,
+            status:
+                filtersForm.status !== 'all' ? filtersForm.status : undefined,
+            method:
+                filtersForm.method !== 'all' ? filtersForm.method : undefined,
+            invoice_id:
+                filtersForm.invoice_id !== 'all'
+                    ? Number(filtersForm.invoice_id)
+                    : undefined,
+            payment_date_from: filtersForm.payment_date_from || undefined,
+            payment_date_to: filtersForm.payment_date_to || undefined,
+            amount_min: filtersForm.amount_min
+                ? Number(filtersForm.amount_min)
+                : undefined,
+            amount_max: filtersForm.amount_max
+                ? Number(filtersForm.amount_max)
+                : undefined,
+        },
+        {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        },
+    );
+};
+
+const clearFilters = () => {
+    filtersForm.search = '';
+    filtersForm.status = 'all';
+    filtersForm.method = 'all';
+    filtersForm.invoice_id = 'all';
+    filtersForm.payment_date_from = '';
+    filtersForm.payment_date_to = '';
+    filtersForm.amount_min = '';
+    filtersForm.amount_max = '';
+    applyFilters();
+};
 
 const statusColor = (status: string) => {
     const colors: Record<string, string> = {
@@ -195,6 +281,161 @@ const deletePayment = () => {
             title="Payments"
             description="Track invoice payments and update balances automatically"
         />
+
+        <Card>
+            <CardHeader>
+                <CardTitle>Filter Payments</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <form @submit.prevent="applyFilters" class="space-y-4">
+                    <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
+                        <div class="md:col-span-2">
+                            <Label for="payment_filter_search">Search</Label>
+                            <Input
+                                id="payment_filter_search"
+                                v-model="filtersForm.search"
+                                class="mt-1"
+                                placeholder="Payment no., ref, invoice, guest"
+                            />
+                        </div>
+
+                        <div>
+                            <Label for="payment_filter_status">Status</Label>
+                            <Select v-model="filtersForm.status">
+                                <SelectTrigger
+                                    id="payment_filter_status"
+                                    class="mt-1"
+                                >
+                                    <SelectValue placeholder="Any status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all"
+                                        >Any status</SelectItem
+                                    >
+                                    <SelectItem
+                                        v-for="status in statuses"
+                                        :key="status"
+                                        :value="status"
+                                    >
+                                        {{ statusLabel(status) }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div>
+                            <Label for="payment_filter_method">Method</Label>
+                            <Select v-model="filtersForm.method">
+                                <SelectTrigger
+                                    id="payment_filter_method"
+                                    class="mt-1"
+                                >
+                                    <SelectValue placeholder="Any method" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all"
+                                        >Any method</SelectItem
+                                    >
+                                    <SelectItem
+                                        v-for="method in methods"
+                                        :key="method"
+                                        :value="method"
+                                    >
+                                        {{ methodLabel(method) }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div>
+                            <Label for="payment_filter_invoice">Invoice</Label>
+                            <Select v-model="filtersForm.invoice_id">
+                                <SelectTrigger
+                                    id="payment_filter_invoice"
+                                    class="mt-1"
+                                >
+                                    <SelectValue placeholder="Any invoice" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all"
+                                        >Any invoice</SelectItem
+                                    >
+                                    <SelectItem
+                                        v-for="invoice in invoices"
+                                        :key="invoice.id"
+                                        :value="String(invoice.id)"
+                                    >
+                                        {{ invoice.invoice_number }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div>
+                            <Label for="payment_filter_date_from"
+                                >Date From</Label
+                            >
+                            <Input
+                                id="payment_filter_date_from"
+                                v-model="filtersForm.payment_date_from"
+                                type="date"
+                                class="mt-1"
+                            />
+                        </div>
+
+                        <div>
+                            <Label for="payment_filter_date_to">Date To</Label>
+                            <Input
+                                id="payment_filter_date_to"
+                                v-model="filtersForm.payment_date_to"
+                                type="date"
+                                class="mt-1"
+                            />
+                        </div>
+
+                        <div>
+                            <Label for="payment_filter_amount_min"
+                                >Min Amount</Label
+                            >
+                            <Input
+                                id="payment_filter_amount_min"
+                                v-model="filtersForm.amount_min"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                class="mt-1"
+                            />
+                        </div>
+
+                        <div>
+                            <Label for="payment_filter_amount_max"
+                                >Max Amount</Label
+                            >
+                            <Input
+                                id="payment_filter_amount_max"
+                                v-model="filtersForm.amount_max"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                class="mt-1"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <Button type="submit">Apply Filters</Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            :disabled="!hasActiveFilters"
+                            @click="clearFilters"
+                        >
+                            Clear
+                        </Button>
+                    </div>
+                </form>
+            </CardContent>
+        </Card>
 
         <Card v-if="showCreateForm" class="border-hotel-primary/20">
             <CardHeader>
@@ -390,7 +631,11 @@ const deletePayment = () => {
             <CardContent>
                 <div v-if="payments.length === 0" class="py-10 text-center">
                     <p class="text-sm text-muted-foreground">
-                        No payments recorded yet.
+                        {{
+                            hasActiveFilters
+                                ? 'No payments match these filters.'
+                                : 'No payments recorded yet.'
+                        }}
                     </p>
                 </div>
 

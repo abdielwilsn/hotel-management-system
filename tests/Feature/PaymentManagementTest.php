@@ -5,6 +5,7 @@ use App\Models\Payment;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 
 uses(RefreshDatabase::class);
 
@@ -236,4 +237,35 @@ test('completed payments must match the full outstanding invoice balance', funct
     ]);
 
     $response->assertSessionHasErrors('amount');
+});
+
+test('payments index can be filtered by method, status, and date', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+
+    $invoice = Invoice::factory()->create(['team_id' => $team->id]);
+
+    $targetPayment = Payment::factory()->create([
+        'team_id' => $team->id,
+        'invoice_id' => $invoice->id,
+        'method' => 'card',
+        'status' => 'completed',
+        'payment_date' => '2026-10-12',
+    ]);
+
+    Payment::factory()->create([
+        'team_id' => $team->id,
+        'invoice_id' => $invoice->id,
+        'method' => 'cash',
+        'status' => 'pending',
+        'payment_date' => '2026-10-01',
+    ]);
+
+    $this->actingAs($user)
+        ->get("/{$team->slug}/payments?method=card&status=completed&payment_date_from=2026-10-10")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('payments.0.id', $targetPayment->id)
+            ->where('payments', fn ($payments) => count($payments) === 1));
 });

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Rooms;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Rooms\SaveRoomRequest;
+use App\Models\Booking;
 use App\Models\Room;
 use App\Models\Team;
 use Illuminate\Http\RedirectResponse;
@@ -19,8 +20,55 @@ class RoomController extends Controller
         Gate::authorize('viewAny', [Room::class, $current_team]);
 
         $rooms = $current_team->rooms()
+            ->with([
+                'bookings' => function ($query): void {
+                    $query
+                        ->select([
+                            'id',
+                            'team_id',
+                            'room_id',
+                            'guest_name',
+                            'check_in_date',
+                            'check_out_date',
+                            'status',
+                        ])
+                        ->where('status', 'checked_in')
+                        ->latest('check_in_date');
+                },
+            ])
             ->orderBy('room_number')
             ->get();
+
+        $occupiedCount = $rooms
+            ->filter(fn (Room $room): bool => $room->bookings->isNotEmpty())
+            ->count();
+
+        $checkedInCount = Booking::query()
+            ->where('team_id', $current_team->id)
+            ->where('status', 'checked_in')
+            ->count();
+
+        $rooms = $rooms->map(function (Room $room): array {
+            /** @var Booking|null $activeBooking */
+            $activeBooking = $room->bookings->first();
+
+            return [
+                'id' => $room->id,
+                'room_number' => $room->room_number,
+                'floor' => $room->floor,
+                'room_type' => $room->room_type,
+                'capacity' => $room->capacity,
+                'price_per_night' => $room->price_per_night,
+                'status' => $activeBooking ? 'occupied' : $room->status,
+                'description' => $room->description,
+                'active_booking' => $activeBooking ? [
+                    'id' => $activeBooking->id,
+                    'guest_name' => $activeBooking->guest_name,
+                    'check_in_date' => $activeBooking->check_in_date?->toDateString(),
+                    'check_out_date' => $activeBooking->check_out_date?->toDateString(),
+                ] : null,
+            ];
+        })->values();
 
         $roomTypes = ['single', 'double', 'suite', 'deluxe', 'penthouse'];
         $statuses = ['available', 'occupied', 'maintenance', 'cleaning'];
@@ -29,6 +77,10 @@ class RoomController extends Controller
             'rooms' => $rooms,
             'roomTypes' => $roomTypes,
             'statuses' => $statuses,
+            'occupancySummary' => [
+                'occupied_rooms' => $occupiedCount,
+                'checked_in_bookings' => $checkedInCount,
+            ],
             'team' => $current_team->only('id', 'slug', 'name'),
         ]);
     }

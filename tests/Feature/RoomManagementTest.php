@@ -1,9 +1,11 @@
 <?php
 
+use App\Models\Booking;
 use App\Models\Room;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 
 uses(RefreshDatabase::class);
 
@@ -127,4 +129,32 @@ test('room status must be valid', function () {
     ]);
 
     $response->assertSessionHasErrors('status');
+});
+
+test('rooms index shows active booking details for occupied rooms', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+
+    $room = Room::factory()->create([
+        'team_id' => $team->id,
+        'status' => 'available',
+    ]);
+
+    $booking = Booking::factory()->create([
+        'team_id' => $team->id,
+        'room_id' => $room->id,
+        'guest_name' => 'Occupied Guest',
+        'status' => 'checked_in',
+    ]);
+
+    $this->actingAs($user)
+        ->get("/{$team->slug}/rooms")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('occupancySummary.occupied_rooms', 1)
+            ->where('rooms.0.id', $room->id)
+            ->where('rooms.0.status', 'occupied')
+            ->where('rooms.0.active_booking.id', $booking->id)
+            ->where('rooms.0.active_booking.guest_name', 'Occupied Guest'));
 });

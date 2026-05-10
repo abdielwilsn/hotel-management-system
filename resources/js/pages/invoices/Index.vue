@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useForm, Link, usePage } from '@inertiajs/vue3';
+import { useForm, Link, usePage, router } from '@inertiajs/vue3';
 import { FileText, Plus, Edit, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
@@ -54,6 +54,17 @@ type Props = {
     invoices: Invoice[];
     bookings: BookingOption[];
     statuses: string[];
+    paymentStatuses: string[];
+    filters: {
+        search?: string | null;
+        status?: string | null;
+        payment_status?: string | null;
+        booking_id?: number | null;
+        issue_date_from?: string | null;
+        issue_date_to?: string | null;
+        due_date_from?: string | null;
+        due_date_to?: string | null;
+    };
     team: { id: number; slug: string; name: string };
 };
 
@@ -76,6 +87,19 @@ const showCreateForm = ref(false);
 const showDeleteDialog = ref(false);
 const invoiceToDelete = ref<Invoice | null>(null);
 
+const filtersForm = useForm({
+    search: props.filters.search ?? '',
+    status: props.filters.status ?? 'all',
+    payment_status: props.filters.payment_status ?? 'all',
+    booking_id: props.filters.booking_id
+        ? String(props.filters.booking_id)
+        : 'all',
+    issue_date_from: props.filters.issue_date_from ?? '',
+    issue_date_to: props.filters.issue_date_to ?? '',
+    due_date_from: props.filters.due_date_from ?? '',
+    due_date_to: props.filters.due_date_to ?? '',
+});
+
 const form = useForm({
     booking_id: 'none',
     guest_name: '',
@@ -91,6 +115,59 @@ const form = useForm({
 });
 
 const deleteForm = useForm({});
+
+const hasActiveFilters = computed(() =>
+    Boolean(
+        filtersForm.search ||
+        filtersForm.status !== 'all' ||
+        filtersForm.payment_status !== 'all' ||
+        filtersForm.booking_id !== 'all' ||
+        filtersForm.issue_date_from ||
+        filtersForm.issue_date_to ||
+        filtersForm.due_date_from ||
+        filtersForm.due_date_to,
+    ),
+);
+
+const applyFilters = () => {
+    router.get(
+        index(props.team.slug).url,
+        {
+            search: filtersForm.search || undefined,
+            status:
+                filtersForm.status !== 'all' ? filtersForm.status : undefined,
+            payment_status:
+                filtersForm.payment_status !== 'all'
+                    ? filtersForm.payment_status
+                    : undefined,
+            booking_id:
+                filtersForm.booking_id !== 'all'
+                    ? Number(filtersForm.booking_id)
+                    : undefined,
+            issue_date_from: filtersForm.issue_date_from || undefined,
+            issue_date_to: filtersForm.issue_date_to || undefined,
+            due_date_from: filtersForm.due_date_from || undefined,
+            due_date_to: filtersForm.due_date_to || undefined,
+        },
+        {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        },
+    );
+};
+
+const clearFilters = () => {
+    filtersForm.search = '';
+    filtersForm.status = 'all';
+    filtersForm.payment_status = 'all';
+    filtersForm.booking_id = 'all';
+    filtersForm.issue_date_from = '';
+    filtersForm.issue_date_to = '';
+    filtersForm.due_date_from = '';
+    filtersForm.due_date_to = '';
+    applyFilters();
+};
 
 const statusColor = (status: string) => {
     const colors: Record<string, string> = {
@@ -172,6 +249,163 @@ const applyBookingDetails = (bookingId: string) => {
             title="Invoices"
             description="Generate and track billing for reservations"
         />
+
+        <Card>
+            <CardHeader>
+                <CardTitle>Filter Invoices</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <form @submit.prevent="applyFilters" class="space-y-4">
+                    <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
+                        <div class="md:col-span-2">
+                            <Label for="invoice_filter_search">Search</Label>
+                            <Input
+                                id="invoice_filter_search"
+                                v-model="filtersForm.search"
+                                class="mt-1"
+                                placeholder="Invoice no., guest name, email"
+                            />
+                        </div>
+
+                        <div>
+                            <Label for="invoice_filter_status">Status</Label>
+                            <Select v-model="filtersForm.status">
+                                <SelectTrigger
+                                    id="invoice_filter_status"
+                                    class="mt-1"
+                                >
+                                    <SelectValue placeholder="Any status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all"
+                                        >Any status</SelectItem
+                                    >
+                                    <SelectItem
+                                        v-for="status in statuses"
+                                        :key="status"
+                                        :value="status"
+                                    >
+                                        {{ statusLabel(status) }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div>
+                            <Label for="invoice_filter_payment_status"
+                                >Payment Status</Label
+                            >
+                            <Select v-model="filtersForm.payment_status">
+                                <SelectTrigger
+                                    id="invoice_filter_payment_status"
+                                    class="mt-1"
+                                >
+                                    <SelectValue placeholder="Any payment" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all"
+                                        >Any payment</SelectItem
+                                    >
+                                    <SelectItem
+                                        v-for="paymentStatus in paymentStatuses"
+                                        :key="paymentStatus"
+                                        :value="paymentStatus"
+                                    >
+                                        {{ statusLabel(paymentStatus) }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div>
+                            <Label for="invoice_filter_booking"
+                                >Linked Booking</Label
+                            >
+                            <Select v-model="filtersForm.booking_id">
+                                <SelectTrigger
+                                    id="invoice_filter_booking"
+                                    class="mt-1"
+                                >
+                                    <SelectValue placeholder="Any booking" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all"
+                                        >Any booking</SelectItem
+                                    >
+                                    <SelectItem
+                                        v-for="booking in bookings"
+                                        :key="booking.id"
+                                        :value="String(booking.id)"
+                                    >
+                                        {{ booking.guest_name }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div>
+                            <Label for="invoice_filter_issue_date_from"
+                                >Issue Date From</Label
+                            >
+                            <Input
+                                id="invoice_filter_issue_date_from"
+                                v-model="filtersForm.issue_date_from"
+                                type="date"
+                                class="mt-1"
+                            />
+                        </div>
+
+                        <div>
+                            <Label for="invoice_filter_issue_date_to"
+                                >Issue Date To</Label
+                            >
+                            <Input
+                                id="invoice_filter_issue_date_to"
+                                v-model="filtersForm.issue_date_to"
+                                type="date"
+                                class="mt-1"
+                            />
+                        </div>
+
+                        <div>
+                            <Label for="invoice_filter_due_date_from"
+                                >Due Date From</Label
+                            >
+                            <Input
+                                id="invoice_filter_due_date_from"
+                                v-model="filtersForm.due_date_from"
+                                type="date"
+                                class="mt-1"
+                            />
+                        </div>
+
+                        <div>
+                            <Label for="invoice_filter_due_date_to"
+                                >Due Date To</Label
+                            >
+                            <Input
+                                id="invoice_filter_due_date_to"
+                                v-model="filtersForm.due_date_to"
+                                type="date"
+                                class="mt-1"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <Button type="submit">Apply Filters</Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            :disabled="!hasActiveFilters"
+                            @click="clearFilters"
+                        >
+                            Clear
+                        </Button>
+                    </div>
+                </form>
+            </CardContent>
+        </Card>
 
         <Card v-if="showCreateForm" class="border-hotel-primary/20">
             <CardHeader>
@@ -476,10 +710,18 @@ const applyBookingDetails = (bookingId: string) => {
             <CardContent class="pt-12 pb-12 text-center">
                 <FileText class="mx-auto mb-4 h-12 w-12 text-gray-400" />
                 <h3 class="mb-1 text-lg font-semibold text-gray-900">
-                    No invoices yet
+                    {{
+                        hasActiveFilters
+                            ? 'No invoices match these filters'
+                            : 'No invoices yet'
+                    }}
                 </h3>
                 <p class="mb-4 text-gray-600">
-                    Create your first invoice to track payments and balances.
+                    {{
+                        hasActiveFilters
+                            ? 'Try adjusting your filter criteria.'
+                            : 'Create your first invoice to track payments and balances.'
+                    }}
                 </p>
                 <Button @click="showCreateForm = true" class="gap-2">
                     <Plus class="h-4 w-4" />

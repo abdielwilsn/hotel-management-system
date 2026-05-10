@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useForm, Link, usePage } from '@inertiajs/vue3';
+import { useForm, Link, usePage, router } from '@inertiajs/vue3';
 import { Edit, Plus, Star, Trash2, UserRound } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
@@ -41,6 +41,14 @@ type Guest = {
 type Props = {
     guests: Guest[];
     tiers: string[];
+    filters: {
+        search?: string | null;
+        loyalty_tier?: string | null;
+        last_stay_from?: string | null;
+        last_stay_to?: string | null;
+        min_loyalty_points?: number | null;
+        has_email?: string | null;
+    };
     team: { id: number; slug: string; name: string };
 };
 
@@ -68,6 +76,19 @@ const showCreateForm = ref(false);
 const showDeleteDialog = ref(false);
 const guestToDelete = ref<Guest | null>(null);
 
+const filtersForm = useForm({
+    search: props.filters.search ?? '',
+    loyalty_tier: props.filters.loyalty_tier ?? 'all',
+    last_stay_from: props.filters.last_stay_from ?? '',
+    last_stay_to: props.filters.last_stay_to ?? '',
+    min_loyalty_points:
+        props.filters.min_loyalty_points !== null &&
+        props.filters.min_loyalty_points !== undefined
+            ? String(props.filters.min_loyalty_points)
+            : '',
+    has_email: props.filters.has_email ?? 'all',
+});
+
 const form = useForm({
     first_name: '',
     last_name: '',
@@ -82,6 +103,54 @@ const form = useForm({
 });
 
 const deleteForm = useForm({});
+
+const hasActiveFilters = computed(() =>
+    Boolean(
+        filtersForm.search ||
+        filtersForm.loyalty_tier !== 'all' ||
+        filtersForm.last_stay_from ||
+        filtersForm.last_stay_to ||
+        filtersForm.min_loyalty_points ||
+        filtersForm.has_email !== 'all',
+    ),
+);
+
+const applyFilters = () => {
+    router.get(
+        index(props.team.slug).url,
+        {
+            search: filtersForm.search || undefined,
+            loyalty_tier:
+                filtersForm.loyalty_tier !== 'all'
+                    ? filtersForm.loyalty_tier
+                    : undefined,
+            last_stay_from: filtersForm.last_stay_from || undefined,
+            last_stay_to: filtersForm.last_stay_to || undefined,
+            min_loyalty_points: filtersForm.min_loyalty_points
+                ? Number(filtersForm.min_loyalty_points)
+                : undefined,
+            has_email:
+                filtersForm.has_email !== 'all'
+                    ? filtersForm.has_email
+                    : undefined,
+        },
+        {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        },
+    );
+};
+
+const clearFilters = () => {
+    filtersForm.search = '';
+    filtersForm.loyalty_tier = 'all';
+    filtersForm.last_stay_from = '';
+    filtersForm.last_stay_to = '';
+    filtersForm.min_loyalty_points = '';
+    filtersForm.has_email = 'all';
+    applyFilters();
+};
 
 const tierColor = (tier: string) => {
     const colors: Record<string, string> = {
@@ -139,6 +208,120 @@ const deleteGuest = () => {
             title="Guests"
             description="Manage profiles, loyalty levels, and repeat stays"
         />
+
+        <Card>
+            <CardHeader>
+                <CardTitle>Filter Guests</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <form @submit.prevent="applyFilters" class="space-y-4">
+                    <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
+                        <div class="md:col-span-2">
+                            <Label for="guest_filter_search">Search</Label>
+                            <Input
+                                id="guest_filter_search"
+                                v-model="filtersForm.search"
+                                class="mt-1"
+                                placeholder="Name, email, phone"
+                            />
+                        </div>
+
+                        <div>
+                            <Label for="guest_filter_tier">Tier</Label>
+                            <Select v-model="filtersForm.loyalty_tier">
+                                <SelectTrigger
+                                    id="guest_filter_tier"
+                                    class="mt-1"
+                                >
+                                    <SelectValue placeholder="Any tier" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all"
+                                        >Any tier</SelectItem
+                                    >
+                                    <SelectItem
+                                        v-for="tier in tiers"
+                                        :key="tier"
+                                        :value="tier"
+                                    >
+                                        {{ labelize(tier) }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div>
+                            <Label for="guest_filter_has_email"
+                                >Has Email</Label
+                            >
+                            <Select v-model="filtersForm.has_email">
+                                <SelectTrigger
+                                    id="guest_filter_has_email"
+                                    class="mt-1"
+                                >
+                                    <SelectValue placeholder="Any" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Any</SelectItem>
+                                    <SelectItem value="yes">Yes</SelectItem>
+                                    <SelectItem value="no">No</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div>
+                            <Label for="guest_filter_last_stay_from"
+                                >Last Stay From</Label
+                            >
+                            <Input
+                                id="guest_filter_last_stay_from"
+                                v-model="filtersForm.last_stay_from"
+                                type="date"
+                                class="mt-1"
+                            />
+                        </div>
+
+                        <div>
+                            <Label for="guest_filter_last_stay_to"
+                                >Last Stay To</Label
+                            >
+                            <Input
+                                id="guest_filter_last_stay_to"
+                                v-model="filtersForm.last_stay_to"
+                                type="date"
+                                class="mt-1"
+                            />
+                        </div>
+
+                        <div>
+                            <Label for="guest_filter_min_points"
+                                >Min Loyalty Points</Label
+                            >
+                            <Input
+                                id="guest_filter_min_points"
+                                v-model="filtersForm.min_loyalty_points"
+                                type="number"
+                                min="0"
+                                step="1"
+                                class="mt-1"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <Button type="submit">Apply Filters</Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            :disabled="!hasActiveFilters"
+                            @click="clearFilters"
+                        >
+                            Clear
+                        </Button>
+                    </div>
+                </form>
+            </CardContent>
+        </Card>
 
         <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Card class="bg-white/90">
@@ -350,7 +533,11 @@ const deleteGuest = () => {
                     v-if="guests.length === 0"
                     class="py-8 text-center text-muted-foreground"
                 >
-                    No guests yet.
+                    {{
+                        hasActiveFilters
+                            ? 'No guests match these filters.'
+                            : 'No guests yet.'
+                    }}
                 </div>
 
                 <div v-else class="space-y-3">

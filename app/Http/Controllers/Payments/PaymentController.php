@@ -7,8 +7,10 @@ use App\Http\Requests\Payments\SavePaymentRequest;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Team;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -20,8 +22,52 @@ class PaymentController extends Controller
     {
         Gate::authorize('viewAny', [Payment::class, $current_team]);
 
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'status' => ['nullable', 'string', 'in:pending,completed,failed,refunded'],
+            'method' => ['nullable', 'string', 'in:cash,card,bank_transfer,online,other'],
+            'invoice_id' => ['nullable', 'integer'],
+            'payment_date_from' => ['nullable', 'date'],
+            'payment_date_to' => ['nullable', 'date'],
+            'amount_min' => ['nullable', 'numeric', 'min:0'],
+            'amount_max' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
         $payments = $current_team->payments()
             ->with('invoice:id,invoice_number,guest_name,total_amount,paid_amount')
+            ->when($filters['search'] ?? null, function (Builder $query, string $search): void {
+                $query->where(function (Builder $subQuery) use ($search): void {
+                    $subQuery
+                        ->where('payment_number', 'like', "%{$search}%")
+                        ->orWhere('reference', 'like', "%{$search}%")
+                        ->orWhereHas('invoice', function (Builder $invoiceQuery) use ($search): void {
+                            $invoiceQuery
+                                ->where('invoice_number', 'like', "%{$search}%")
+                                ->orWhere('guest_name', 'like', "%{$search}%");
+                        });
+                });
+            })
+            ->when($filters['status'] ?? null, function (Builder $query, string $status): void {
+                $query->where('status', $status);
+            })
+            ->when($filters['method'] ?? null, function (Builder $query, string $method): void {
+                $query->where('method', $method);
+            })
+            ->when($filters['invoice_id'] ?? null, function (Builder $query, int $invoiceId): void {
+                $query->where('invoice_id', $invoiceId);
+            })
+            ->when($filters['payment_date_from'] ?? null, function (Builder $query, string $paymentDateFrom): void {
+                $query->whereDate('payment_date', '>=', $paymentDateFrom);
+            })
+            ->when($filters['payment_date_to'] ?? null, function (Builder $query, string $paymentDateTo): void {
+                $query->whereDate('payment_date', '<=', $paymentDateTo);
+            })
+            ->when($filters['amount_min'] ?? null, function (Builder $query, string $amountMin): void {
+                $query->where('amount', '>=', $amountMin);
+            })
+            ->when($filters['amount_max'] ?? null, function (Builder $query, string $amountMax): void {
+                $query->where('amount', '<=', $amountMax);
+            })
             ->orderByDesc('payment_date')
             ->orderByDesc('id')
             ->get();
@@ -38,6 +84,16 @@ class PaymentController extends Controller
             'invoices' => $invoices,
             'methods' => $methods,
             'statuses' => $statuses,
+            'filters' => Arr::only($filters, [
+                'search',
+                'status',
+                'method',
+                'invoice_id',
+                'payment_date_from',
+                'payment_date_to',
+                'amount_min',
+                'amount_max',
+            ]),
             'team' => $current_team->only('id', 'slug', 'name'),
         ]);
     }
