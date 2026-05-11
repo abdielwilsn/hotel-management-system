@@ -302,7 +302,7 @@ const deleteRoom = () => {
                         <Button
                             type="submit"
                             :disabled="form.processing"
-                            class="bg-hotel-primary hover:bg-hotel-primary/90 gap-2"
+                            class="bg-black hover:bg-hotel-primary/90 gap-2"
                         >
                             <Save class="h-4 w-4" />
                             {{ form.processing ? 'Saving...' : 'Save Changes' }}

@@ -269,7 +269,7 @@ const deleteStaff = () => {
                         <Button
                             type="submit"
                             :disabled="form.processing"
-                            class="bg-hotel-primary hover:bg-hotel-primary/90"
+                            class="bg-black hover:bg-hotel-primary/90"
                         >
                             {{
                                 form.processing
