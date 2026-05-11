@@ -207,6 +207,53 @@ const formatCurrency = (value: number) =>
         currency: 'NGN',
     }).format(Number(value));
 
+const paymentAccentClass = (payment: Payment) => {
+    if (payment.status === 'completed') {
+        return 'from-emerald-500 via-emerald-400 to-teal-400';
+    }
+
+    if (payment.status === 'pending') {
+        return 'from-amber-500 via-orange-400 to-yellow-400';
+    }
+
+    if (payment.status === 'failed') {
+        return 'from-rose-500 via-red-400 to-orange-400';
+    }
+
+    if (payment.status === 'refunded') {
+        return 'from-slate-500 via-gray-400 to-zinc-400';
+    }
+
+    return 'from-blue-500 via-sky-400 to-cyan-400';
+};
+
+const paymentBalance = (payment: Payment) =>
+    Math.max(
+        0,
+        Number(payment.invoice?.total_amount ?? 0) -
+            Number(payment.invoice?.paid_amount ?? 0),
+    );
+
+const paymentToneClass = (payment: Payment) => {
+    const balance = paymentBalance(payment);
+
+    if (balance <= 0 || payment.status === 'completed') {
+        return 'text-emerald-700 bg-emerald-50 ring-emerald-100';
+    }
+
+    if (payment.status === 'pending') {
+        return 'text-amber-700 bg-amber-50 ring-amber-100';
+    }
+
+    return 'text-slate-700 bg-slate-50 ring-slate-200';
+};
+
+const paymentSourceLabel = (payment: Payment) =>
+    payment.invoice?.invoice_number ?? 'Standalone payment';
+
+const paymentGuestLabel = (payment: Payment) =>
+    payment.invoice?.guest_name ?? 'Guest';
+
 const selectedInvoice = computed(() =>
     props.invoices.find((invoice) => String(invoice.id) === form.invoice_id),
 );
@@ -473,7 +520,8 @@ const deletePayment = () => {
                             />
                             <p class="mt-2 text-xs text-muted-foreground">
                                 Selecting an invoice auto-fills the outstanding
-                                balance. Partial payments are not accepted.
+                                balance. You can record a partial payment or use
+                                Full Pay to settle the invoice.
                             </p>
                         </div>
 
@@ -639,88 +687,273 @@ const deletePayment = () => {
                     </p>
                 </div>
 
-                <div v-else class="space-y-2">
-                    <div
+                <div v-else class="space-y-4">
+                    <Card
                         v-for="payment in payments"
                         :key="payment.id"
-                        class="border-hotel-primary/15 grid grid-cols-1 items-center gap-3 rounded-lg border bg-white px-3 py-2.5 sm:grid-cols-[130px_1fr_120px_100px_auto]"
+                        :accent-class="paymentAccentClass(payment)"
                     >
-                        <div>
-                            <p
-                                class="text-hotel-primary/80 text-xs font-semibold"
+                        <CardContent class="p-0">
+                            <div
+                                class="grid gap-0 lg:grid-cols-[minmax(0,1.35fr)_minmax(260px,0.9fr)_auto]"
                             >
-                                {{ payment.payment_number }}
-                            </p>
-                            <p class="text-xs text-muted-foreground">
-                                {{ payment.payment_date }}
-                            </p>
-                        </div>
+                                <div class="space-y-4 p-5 lg:p-6">
+                                    <div
+                                        class="flex flex-wrap items-start justify-between gap-3"
+                                    >
+                                        <div class="min-w-0 space-y-2">
+                                            <div
+                                                class="flex flex-wrap items-center gap-2"
+                                            >
+                                                <h3
+                                                    class="text-lg font-semibold tracking-tight break-words text-gray-900"
+                                                >
+                                                    {{ payment.payment_number }}
+                                                </h3>
+                                                <Badge
+                                                    :class="
+                                                        statusColor(
+                                                            payment.status,
+                                                        )
+                                                    "
+                                                >
+                                                    {{
+                                                        statusLabel(
+                                                            payment.status,
+                                                        )
+                                                    }}
+                                                </Badge>
+                                            </div>
+                                            <p
+                                                class="text-sm break-words text-gray-500"
+                                            >
+                                                {{ paymentGuestLabel(payment) }}
+                                                ·
+                                                {{
+                                                    payment.invoice
+                                                        ?.invoice_number ??
+                                                    'Invoice'
+                                                }}
+                                            </p>
+                                        </div>
 
-                        <div>
-                            <p class="text-sm font-medium">
-                                {{
-                                    payment.invoice?.invoice_number ?? 'Invoice'
-                                }}
-                            </p>
-                            <p class="text-xs text-muted-foreground">
-                                {{ payment.invoice?.guest_name ?? 'Guest' }}
-                            </p>
-                        </div>
+                                        <div
+                                            class="max-w-56 truncate rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200"
+                                        >
+                                            {{ paymentSourceLabel(payment) }}
+                                        </div>
+                                    </div>
 
-                        <div>
-                            <p class="text-sm font-semibold">
-                                {{ formatCurrency(payment.amount) }}
-                            </p>
-                            <p class="text-xs text-muted-foreground">
-                                {{ methodLabel(payment.method) }}
-                            </p>
-                        </div>
+                                    <div
+                                        class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+                                    >
+                                        <div
+                                            class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200"
+                                        >
+                                            <p
+                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                            >
+                                                Paid On
+                                            </p>
+                                            <p
+                                                class="mt-1 text-sm font-semibold break-words text-slate-900"
+                                            >
+                                                {{ payment.payment_date }}
+                                            </p>
+                                            <p
+                                                class="text-xs break-words text-slate-500"
+                                            >
+                                                {{
+                                                    methodLabel(payment.method)
+                                                }}
+                                            </p>
+                                        </div>
 
-                        <Badge :class="statusColor(payment.status)">
-                            {{ statusLabel(payment.status) }}
-                        </Badge>
+                                        <div
+                                            class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200"
+                                        >
+                                            <p
+                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                            >
+                                                Amount
+                                            </p>
+                                            <p
+                                                class="mt-1 text-sm font-semibold break-words text-slate-900"
+                                            >
+                                                {{
+                                                    formatCurrency(
+                                                        payment.amount,
+                                                    )
+                                                }}
+                                            </p>
+                                            <p
+                                                class="text-xs break-words text-slate-500"
+                                            >
+                                                {{
+                                                    payment.reference ??
+                                                    'No reference'
+                                                }}
+                                            </p>
+                                        </div>
 
-                        <div class="flex items-center justify-end gap-2">
-                            <Button
-                                v-if="isAdmin"
-                                as-child
-                                variant="outline"
-                                size="sm"
-                            >
-                                <Link :href="edit([team.slug, payment.id]).url">
-                                    <Edit class="size-3.5" />
-                                </Link>
-                            </Button>
-                            <Button
-                                v-else
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                disabled
-                                title="Admin only action"
-                            >
-                                <Edit class="size-3.5" />
-                            </Button>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                class="text-red-600 hover:text-red-700"
-                                :disabled="!isAdmin"
-                                :title="
-                                    isAdmin
-                                        ? 'Delete payment'
-                                        : 'Admin only action'
-                                "
-                                @click="
-                                    paymentToDelete = payment;
-                                    showDeleteDialog = true;
-                                "
-                            >
-                                <Trash2 class="size-3.5" />
-                            </Button>
-                        </div>
-                    </div>
+                                        <div
+                                            class="rounded-2xl p-3 ring-1"
+                                            :class="paymentToneClass(payment)"
+                                        >
+                                            <p
+                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                            >
+                                                Balance
+                                            </p>
+                                            <p
+                                                class="mt-1 text-sm font-semibold"
+                                            >
+                                                {{
+                                                    formatCurrency(
+                                                        paymentBalance(payment),
+                                                    )
+                                                }}
+                                            </p>
+                                            <p class="text-xs">
+                                                {{
+                                                    statusLabel(payment.status)
+                                                }}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex flex-wrap gap-2">
+                                        <span
+                                            class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
+                                        >
+                                            {{ methodLabel(payment.method) }}
+                                        </span>
+                                        <span
+                                            class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
+                                        >
+                                            {{
+                                                payment.invoice
+                                                    ?.invoice_number ??
+                                                'Unlinked payment'
+                                            }}
+                                        </span>
+                                        <span
+                                            v-if="payment.notes"
+                                            class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
+                                        >
+                                            Notes added
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div
+                                    class="border-t border-slate-200 bg-slate-50/70 p-5 lg:border-t-0 lg:border-l lg:p-6"
+                                >
+                                    <div class="space-y-3">
+                                        <div
+                                            class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
+                                        >
+                                            <p
+                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                            >
+                                                Linked Invoice
+                                            </p>
+                                            <p
+                                                class="mt-1 text-sm font-semibold text-slate-900"
+                                            >
+                                                {{
+                                                    payment.invoice
+                                                        ?.invoice_number ??
+                                                    'None'
+                                                }}
+                                            </p>
+                                            <p class="text-xs text-slate-500">
+                                                {{
+                                                    payment.invoice
+                                                        ?.guest_name ?? 'Guest'
+                                                }}
+                                            </p>
+                                        </div>
+
+                                        <div
+                                            v-if="payment.notes"
+                                            class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
+                                        >
+                                            <p
+                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                            >
+                                                Notes
+                                            </p>
+                                            <p
+                                                class="mt-1 line-clamp-3 text-sm text-slate-600"
+                                            >
+                                                {{ payment.notes }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div
+                                    class="flex items-stretch border-t border-slate-200 p-5 lg:border-t-0 lg:border-l lg:p-6"
+                                >
+                                    <div
+                                        class="flex w-full flex-col gap-2 sm:w-auto"
+                                    >
+                                        <Button
+                                            v-if="isAdmin"
+                                            as-child
+                                            variant="outline"
+                                            size="sm"
+                                            class="h-10 w-full justify-start gap-2 rounded-xl"
+                                        >
+                                            <Link
+                                                :href="
+                                                    edit([
+                                                        team.slug,
+                                                        payment.id,
+                                                    ]).url
+                                                "
+                                            >
+                                                <Edit class="size-3.5" />
+                                                Edit
+                                            </Link>
+                                        </Button>
+                                        <Button
+                                            v-else
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            disabled
+                                            title="Admin only action"
+                                            class="h-10 w-full justify-start gap-2 rounded-xl"
+                                        >
+                                            <Edit class="size-3.5" />
+                                            Edit
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            class="h-10 w-full justify-start gap-2 rounded-xl border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                            :disabled="!isAdmin"
+                                            :title="
+                                                isAdmin
+                                                    ? 'Delete payment'
+                                                    : 'Admin only action'
+                                            "
+                                            @click="
+                                                paymentToDelete = payment;
+                                                showDeleteDialog = true;
+                                            "
+                                        >
+                                            <Trash2 class="size-3.5" />
+                                            Delete
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
             </CardContent>
         </Card>

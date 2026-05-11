@@ -194,6 +194,8 @@ class PaymentController extends Controller
 
         if ($paidAmount <= 0 && $status !== 'void') {
             $status = 'issued';
+        } elseif ($paidAmount > 0 && $paidAmount < $totalAmount) {
+            $status = 'partially_paid';
         }
 
         if ($paidAmount >= $totalAmount && $totalAmount > 0) {

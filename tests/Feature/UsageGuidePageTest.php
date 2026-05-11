@@ -13,5 +13,8 @@ test('team members can view the usage guide page', function () {
 
     $this->actingAs($user)
         ->get("/{$team->slug}/usage-guide")
-        ->assertOk();
+        ->assertOk()
+        ->assertSee('View Folio')
+        ->assertSee('Extend Stay')
+        ->assertSee('Check Out');
 });

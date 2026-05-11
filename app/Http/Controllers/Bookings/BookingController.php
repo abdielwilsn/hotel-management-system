@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Bookings;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Bookings\CheckoutBookingRequest;
+use App\Http\Requests\Bookings\ExtendBookingStayRequest;
 use App\Http\Requests\Bookings\ProcessBookingPaymentRequest;
 use App\Http\Requests\Bookings\SaveBookingRequest;
 use App\Models\Booking;
@@ -15,6 +17,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -45,9 +48,27 @@ class BookingController extends Controller
                         'invoices.id',
                         'invoices.booking_id',
                         'invoices.invoice_number',
+                        'invoices.issue_date',
+                        'invoices.due_date',
                         'invoices.total_amount',
                         'invoices.paid_amount',
                         'invoices.status',
+                    ])->with([
+                        'payments' => function ($paymentQuery): void {
+                            $paymentQuery
+                                ->select([
+                                    'payments.id',
+                                    'payments.invoice_id',
+                                    'payments.payment_number',
+                                    'payments.payment_date',
+                                    'payments.amount',
+                                    'payments.method',
+                                    'payments.status',
+                                    'payments.reference',
+                                ])
+                                ->orderByDesc('payment_date')
+                                ->orderByDesc('id');
+                        },
                     ]);
                 },
             ])
@@ -110,9 +131,32 @@ class BookingController extends Controller
                 });
             })
             ->orderByDesc('check_in_date')
-            ->get();
+            ->get()
+            ->map(function (Booking $booking): Booking {
+                $booking->setAttribute('extension_history', $this->extensionHistoryFromNotes($booking->notes));
 
-        $rooms = $current_team->rooms()->where('status', '!=', 'maintenance')->get(['id', 'room_number', 'room_type', 'capacity', 'price_per_night']);
+                return $booking;
+            });
+
+        $today = Carbon::today()->toDateString();
+
+        $rooms = $current_team->rooms()
+            ->where('status', 'available')
+            ->whereDoesntHave('bookings', function (Builder $query) use ($today): void {
+                $query
+                    ->where('status', 'checked_in')
+                    ->orWhere(function (Builder $reservationQuery) use ($today): void {
+                        $reservationQuery
+                            ->where(function (Builder $statusQuery): void {
+                                $statusQuery
+                                    ->where('status', 'pending')
+                                    ->orWhere('status', 'confirmed');
+                            })
+                            ->whereDate('check_in_date', '<=', $today)
+                            ->whereDate('check_out_date', '>=', $today);
+                    });
+            })
+            ->get(['id', 'room_number', 'room_type', 'capacity', 'price_per_night']);
         $statuses = ['pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled'];
 
         return Inertia::render('bookings/Index', [
@@ -164,9 +208,8 @@ class BookingController extends Controller
 
             $booking = $current_team->bookings()->create($bookingPayload);
 
-            // Update room status if booking is checked in
             if ($booking->status === 'checked_in') {
-                $room->update(['status' => 'occupied']);
+                $this->markRoomAsOccupied($room);
             }
 
             $invoice = $this->syncBookingInvoice($current_team, $booking);
@@ -235,6 +278,71 @@ class BookingController extends Controller
             ->with('message', "Payment recorded for {$booking->guest_name}.");
     }
 
+    public function checkout(CheckoutBookingRequest $request, Team $current_team, Booking $booking): RedirectResponse
+    {
+        $this->bookingForTeam($current_team, $booking);
+
+        Gate::authorize('update', [$booking, $current_team]);
+
+        DB::transaction(function () use ($booking, $current_team, $request): void {
+            $invoice = $this->syncBookingInvoice($current_team, $booking);
+            $balance = round((float) $invoice->total_amount - (float) $invoice->paid_amount, 2);
+            $settlementAmount = round((float) ($request->validated('settlement_amount') ?? 0), 2);
+
+            if ($balance > 0 && $settlementAmount > 0) {
+                $this->recordPayment($current_team, $invoice, [
+                    'amount' => $settlementAmount,
+                    'method' => (string) $request->validated('settlement_method'),
+                    'payment_date' => (string) $request->validated('settlement_payment_date'),
+                    'status' => 'completed',
+                    'reference' => $request->validated('settlement_reference'),
+                    'notes' => $request->validated('settlement_notes'),
+                ]);
+            }
+
+            $booking->update(['status' => 'checked_out']);
+
+            $this->releaseRoomIfNoActiveBookings($booking->room()->first(), $booking->id);
+        });
+
+        return redirect()->route('bookings.index', $current_team->slug)
+            ->with('message', "{$booking->guest_name} has been checked out.");
+    }
+
+    public function extendStay(ExtendBookingStayRequest $request, Team $current_team, Booking $booking): RedirectResponse
+    {
+        $this->bookingForTeam($current_team, $booking);
+
+        Gate::authorize('update', [$booking, $current_team]);
+
+        DB::transaction(function () use ($booking, $current_team, $request): void {
+            $newCheckOutDate = (string) $request->validated('check_out_date');
+            $updatedNotes = $booking->notes;
+
+            if ($request->filled('notes')) {
+                $note = trim((string) $request->validated('notes'));
+                $updatedNotes = $updatedNotes
+                    ? trim($updatedNotes."\nExtension: {$note}")
+                    : "Extension: {$note}";
+            }
+
+            $nights = max(1, Carbon::parse($booking->check_in_date)->diffInDays($newCheckOutDate));
+            $totalAmount = round((float) $booking->price_per_night * $nights, 2);
+
+            $booking->update([
+                'check_out_date' => $newCheckOutDate,
+                'total_amount' => $totalAmount,
+                'notes' => $updatedNotes,
+            ]);
+
+            $invoice = $this->syncBookingInvoice($current_team, $booking->fresh());
+            $this->refreshInvoicePaidAmount($invoice->fresh());
+        });
+
+        return redirect()->route('bookings.index', $current_team->slug)
+            ->with('message', "Stay extended for {$booking->guest_name}.");
+    }
+
     public function edit(Request $request, Team $current_team, Booking $booking): Response
     {
         $this->bookingForTeam($current_team, $booking);
@@ -270,39 +378,19 @@ class BookingController extends Controller
 
         $booking->update($data);
 
-        // Handle room status changes
-        // If room changed, release old room if it was occupied by this booking
         if ($oldRoomId !== (int) $data['room_id']) {
             $oldRoom = Room::query()->find($oldRoomId);
-            if ($oldRoom && $oldRoom->status === 'occupied') {
-                // Check if there are other checked-in bookings for this room
-                $hasOtherCheckedIn = Booking::query()
-                    ->where('room_id', $oldRoom->id)
-                    ->where('id', '!=', $booking->id)
-                    ->whereIn('status', ['checked_in', 'pending', 'confirmed'])
-                    ->exists();
-
-                if (! $hasOtherCheckedIn) {
-                    $oldRoom->update(['status' => 'available']);
-                }
-            }
+            $this->releaseRoomIfNoActiveBookings($oldRoom, $booking->id);
         }
 
-        // Update new room status based on booking status
         if ($newStatus === 'checked_in') {
-            $room->update(['status' => 'occupied']);
+            $this->markRoomAsOccupied($room);
         } elseif (in_array($newStatus, ['checked_out', 'cancelled'], true)) {
-            // Check if there are other active bookings for this room
-            $hasOtherActive = Booking::query()
-                ->where('room_id', $room->id)
-                ->where('id', '!=', $booking->id)
-                ->whereIn('status', ['checked_in', 'pending', 'confirmed'])
-                ->exists();
-
-            if (! $hasOtherActive) {
-                $room->update(['status' => 'available']);
-            }
+            $this->releaseRoomIfNoActiveBookings($room, $booking->id);
         }
+
+        $invoice = $this->syncBookingInvoice($current_team, $booking->fresh());
+        $this->refreshInvoicePaidAmount($invoice->fresh());
 
         return redirect()->route('bookings.index', $current_team->slug)
             ->with('message', "Booking for {$booking->guest_name} has been updated.");
@@ -318,19 +406,8 @@ class BookingController extends Controller
         $roomId = $booking->room_id;
         Booking::query()->whereKey($booking->id)->delete();
 
-        // Release room if booking was occupying it
         $room = Room::query()->find($roomId);
-        if ($room && $room->status === 'occupied') {
-            // Check if there are other active bookings for this room
-            $hasOtherActive = Booking::query()
-                ->where('room_id', $room->id)
-                ->whereIn('status', ['checked_in', 'pending', 'confirmed'])
-                ->exists();
-
-            if (! $hasOtherActive) {
-                $room->update(['status' => 'available']);
-            }
-        }
+        $this->releaseRoomIfNoActiveBookings($room);
 
         return redirect()->route('bookings.index', $current_team->slug)
             ->with('message', "Booking for {$name} has been removed.");
@@ -367,6 +444,7 @@ class BookingController extends Controller
         $invoice->update([
             'guest_name' => $booking->guest_name,
             'guest_email' => $booking->guest_email,
+            'due_date' => Carbon::parse($booking->check_out_date)->toDateString(),
             'subtotal' => $booking->total_amount,
             'total_amount' => $booking->total_amount,
         ]);
@@ -404,6 +482,8 @@ class BookingController extends Controller
 
         if ($paidAmount <= 0 && $status !== 'void') {
             $status = 'issued';
+        } elseif ($paidAmount > 0 && $paidAmount < $totalAmount) {
+            $status = 'partially_paid';
         }
 
         if ($paidAmount >= $totalAmount && $totalAmount > 0) {
@@ -414,6 +494,49 @@ class BookingController extends Controller
             'paid_amount' => round($paidAmount, 2),
             'status' => $status,
         ]);
+    }
+
+    private function markRoomAsOccupied(?Room $room): void
+    {
+        if (! $room) {
+            return;
+        }
+
+        $room->update(['status' => 'occupied']);
+    }
+
+    private function releaseRoomIfNoActiveBookings(?Room $room, ?int $excludedBookingId = null): void
+    {
+        if (! $room) {
+            return;
+        }
+
+        $hasOtherActive = Booking::query()
+            ->where('room_id', $room->id)
+            ->when($excludedBookingId, fn (Builder $query, int $bookingId) => $query->where('id', '!=', $bookingId))
+            ->whereIn('status', ['checked_in', 'pending', 'confirmed'])
+            ->exists();
+
+        if (! $hasOtherActive) {
+            $room->update(['status' => 'available']);
+        }
+    }
+
+    /**
+     * @return array<int, array{label: string}>
+     */
+    private function extensionHistoryFromNotes(?string $notes): array
+    {
+        if (! is_string($notes) || trim($notes) === '') {
+            return [];
+        }
+
+        return Collection::make(preg_split('/\r\n|\r|\n/', $notes) ?: [])
+            ->map(static fn (?string $line): string => trim((string) $line))
+            ->filter(static fn (string $line): bool => str_starts_with($line, 'Extension: '))
+            ->map(static fn (string $line): array => ['label' => trim(substr($line, 11))])
+            ->values()
+            ->all();
     }
 
     private function generateInvoiceNumber(Team $team): string

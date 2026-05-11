@@ -47,6 +47,8 @@ Route::prefix('{current_team}')
 
         Route::post('bookings', [BookingController::class, 'store'])->name('bookings.store');
         Route::post('bookings/{booking}/process-payment', [BookingController::class, 'processPayment'])->name('bookings.process-payment');
+        Route::post('bookings/{booking}/checkout', [BookingController::class, 'checkout'])->name('bookings.checkout');
+        Route::post('bookings/{booking}/extend-stay', [BookingController::class, 'extendStay'])->name('bookings.extend-stay');
         Route::get('bookings/{booking}/edit', [BookingController::class, 'edit'])->name('bookings.edit');
         Route::patch('bookings/{booking}', [BookingController::class, 'update'])->name('bookings.update');
 

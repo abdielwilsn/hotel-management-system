@@ -7,8 +7,11 @@ use App\Http\Requests\Rooms\SaveRoomRequest;
 use App\Models\Booking;
 use App\Models\Room;
 use App\Models\Team;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -19,9 +22,42 @@ class RoomController extends Controller
     {
         Gate::authorize('viewAny', [Room::class, $current_team]);
 
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'room_type' => ['nullable', 'string', 'in:single,double,suite,deluxe,penthouse'],
+            'status' => ['nullable', 'string', 'in:available,reserved,occupied,maintenance,cleaning'],
+            'floor' => ['nullable', 'integer', 'min:1'],
+            'min_capacity' => ['nullable', 'integer', 'min:1'],
+            'max_price' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        $today = Carbon::today()->toDateString();
+
         $rooms = $current_team->rooms()
+            ->when($filters['search'] ?? null, function (Builder $query, string $search): void {
+                $query->where(function (Builder $subQuery) use ($search): void {
+                    $subQuery
+                        ->where('room_number', 'like', "%{$search}%")
+                        ->orWhere('description', 'like', "%{$search}%")
+                        ->orWhereHas('bookings', function (Builder $bookingQuery) use ($search): void {
+                            $bookingQuery->where('guest_name', 'like', "%{$search}%");
+                        });
+                });
+            })
+            ->when($filters['room_type'] ?? null, function (Builder $query, string $roomType): void {
+                $query->where('room_type', $roomType);
+            })
+            ->when($filters['floor'] ?? null, function (Builder $query, int $floor): void {
+                $query->where('floor', $floor);
+            })
+            ->when($filters['min_capacity'] ?? null, function (Builder $query, int $minimumCapacity): void {
+                $query->where('capacity', '>=', $minimumCapacity);
+            })
+            ->when($filters['max_price'] ?? null, function (Builder $query, string $maximumPrice): void {
+                $query->where('price_per_night', '<=', $maximumPrice);
+            })
             ->with([
-                'bookings' => function ($query): void {
+                'bookings' => function ($query) use ($today): void {
                     $query
                         ->select([
                             'id',
@@ -32,15 +68,44 @@ class RoomController extends Controller
                             'check_out_date',
                             'status',
                         ])
-                        ->where('status', 'checked_in')
-                        ->latest('check_in_date');
+                        ->where(function ($bookingQuery) use ($today): void {
+                            $bookingQuery
+                                ->where('status', 'checked_in')
+                                ->orWhere(function ($reservationQuery) use ($today): void {
+                                    $reservationQuery
+                                        ->where(function ($statusQuery): void {
+                                            $statusQuery
+                                                ->where('status', 'pending')
+                                                ->orWhere('status', 'confirmed');
+                                        })
+                                        ->whereDate('check_in_date', '<=', $today)
+                                        ->whereDate('check_out_date', '>=', $today);
+                                });
+                        })
+                        ->orderByDesc('check_in_date');
                 },
             ])
             ->orderBy('room_number')
             ->get();
 
         $occupiedCount = $rooms
-            ->filter(fn (Room $room): bool => $room->bookings->isNotEmpty())
+            ->filter(fn (Room $room): bool => $room->bookings->contains(fn (Booking $booking): bool => $booking->status === 'checked_in'))
+            ->count();
+
+        $reservedCount = $rooms
+            ->filter(function (Room $room): bool {
+                $hasCheckedInBooking = $room->bookings->contains(
+                    fn (Booking $booking): bool => $booking->status === 'checked_in',
+                );
+
+                if ($hasCheckedInBooking) {
+                    return false;
+                }
+
+                return $room->bookings->contains(
+                    fn (Booking $booking): bool => in_array($booking->status, ['pending', 'confirmed'], true),
+                );
+            })
             ->count();
 
         $checkedInCount = Booking::query()
@@ -48,9 +113,34 @@ class RoomController extends Controller
             ->where('status', 'checked_in')
             ->count();
 
+        $activeReservationCount = Booking::query()
+            ->where('team_id', $current_team->id)
+            ->whereIn('status', ['pending', 'confirmed'])
+            ->whereDate('check_in_date', '<=', $today)
+            ->whereDate('check_out_date', '>=', $today)
+            ->count();
+
         $rooms = $rooms->map(function (Room $room): array {
-            /** @var Booking|null $activeBooking */
-            $activeBooking = $room->bookings->first();
+            /** @var Booking|null $activeCheckedInBooking */
+            $activeCheckedInBooking = $room->bookings->first(
+                fn (Booking $booking): bool => $booking->status === 'checked_in',
+            );
+
+            /** @var Booking|null $activeReservation */
+            $activeReservation = $room->bookings->first(
+                fn (Booking $booking): bool => in_array($booking->status, ['pending', 'confirmed'], true),
+            );
+
+            $derivedStatus = $room->status;
+            $displayBooking = null;
+
+            if ($activeCheckedInBooking) {
+                $derivedStatus = 'occupied';
+                $displayBooking = $activeCheckedInBooking;
+            } elseif ($activeReservation) {
+                $derivedStatus = 'reserved';
+                $displayBooking = $activeReservation;
+            }
 
             return [
                 'id' => $room->id,
@@ -59,27 +149,49 @@ class RoomController extends Controller
                 'room_type' => $room->room_type,
                 'capacity' => $room->capacity,
                 'price_per_night' => $room->price_per_night,
-                'status' => $activeBooking ? 'occupied' : $room->status,
+                'status' => $derivedStatus,
                 'description' => $room->description,
-                'active_booking' => $activeBooking ? [
-                    'id' => $activeBooking->id,
-                    'guest_name' => $activeBooking->guest_name,
-                    'check_in_date' => $activeBooking->check_in_date?->toDateString(),
-                    'check_out_date' => $activeBooking->check_out_date?->toDateString(),
+                'active_booking' => $displayBooking ? [
+                    'id' => $displayBooking->id,
+                    'guest_name' => $displayBooking->guest_name,
+                    'check_in_date' => $displayBooking->check_in_date?->toDateString(),
+                    'check_out_date' => $displayBooking->check_out_date?->toDateString(),
+                    'status' => $displayBooking->status,
                 ] : null,
             ];
-        })->values();
+        });
+
+        if (($filters['status'] ?? null) !== null) {
+            $rooms = $rooms->where('status', $filters['status']);
+        }
+
+        $rooms = $rooms->values();
 
         $roomTypes = ['single', 'double', 'suite', 'deluxe', 'penthouse'];
         $statuses = ['available', 'occupied', 'maintenance', 'cleaning'];
+
+        $occupiedCount = $rooms->where('status', 'occupied')->count();
+        $reservedCount = $rooms->where('status', 'reserved')->count();
+        $checkedInCount = $occupiedCount;
+        $activeReservationCount = $reservedCount;
 
         return Inertia::render('rooms/Index', [
             'rooms' => $rooms,
             'roomTypes' => $roomTypes,
             'statuses' => $statuses,
+            'filters' => Arr::only($filters, [
+                'search',
+                'room_type',
+                'status',
+                'floor',
+                'min_capacity',
+                'max_price',
+            ]),
             'occupancySummary' => [
                 'occupied_rooms' => $occupiedCount,
+                'reserved_rooms' => $reservedCount,
                 'checked_in_bookings' => $checkedInCount,
+                'active_reservations' => $activeReservationCount,
             ],
             'team' => $current_team->only('id', 'slug', 'name'),
         ]);

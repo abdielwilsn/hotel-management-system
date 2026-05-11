@@ -24,15 +24,16 @@ const quickLinks = computed(() => [
         steps: [
             'Create a booking from the Bookings page.',
             'Set booking to checked_in when the guest arrives.',
-            'Record payment from Bookings or Payments.',
-            'Set booking to checked_out at departure.',
+            'Use View Folio to review charges, payments, and any stay extensions.',
+            'Record deposits or balance payments from Bookings or Payments.',
+            'Use Check Out to settle any remaining balance before departure.',
         ],
     },
     {
         title: 'Revenue Tracking',
         steps: [
             'Use Invoices to confirm billing balances.',
-            'Use Payments filters to find pending or failed transactions.',
+            'Use Payments filters to find partial, pending, or failed transactions.',
             'Use date-range filters for daily and monthly reconciliation.',
         ],
     },
@@ -42,6 +43,14 @@ const quickLinks = computed(() => [
             'Room cards show active guest occupancy when a checked-in booking exists.',
             'Occupancy summary is computed from live checked-in bookings.',
             'Use room status for maintenance and cleaning workflow management.',
+        ],
+    },
+    {
+        title: 'Extensions and Checkout',
+        steps: [
+            'Use Extend Stay on confirmed or checked-in bookings when a guest adds nights.',
+            'The booking total and invoice balance update automatically after each extension.',
+            'Extension reasons appear inside the booking folio so staff can trace the stay history.',
         ],
     },
 ]);
@@ -88,6 +97,11 @@ const quickLinks = computed(() => [
                     Occupancy metrics are based on checked-in bookings, so they
                     remain accurate even if room status was not manually
                     updated.
+                </p>
+                <p>
+                    The booking folio is the quickest way to confirm total
+                    charges, deposits taken, remaining balance, and extension
+                    notes before checkout.
                 </p>
             </CardContent>
         </Card>

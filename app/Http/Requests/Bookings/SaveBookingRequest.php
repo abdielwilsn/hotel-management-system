@@ -144,10 +144,10 @@ class SaveBookingRequest extends FormRequest
                     $bookingTotal = round(((float) $room->price_per_night) * $nights, 2);
                     $submittedAmount = round((float) $this->input('payment_amount'), 2);
 
-                    if (abs($submittedAmount - $bookingTotal) > 0.01) {
+                    if ($submittedAmount - $bookingTotal > 0.01) {
                         $validator->errors()->add(
                             'payment_amount',
-                            'Partial payments are not accepted. Enter the full booking amount.',
+                            'Payment amount cannot exceed the booking total.',
                         );
                     }
                 }

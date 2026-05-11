@@ -66,10 +66,10 @@ class ProcessBookingPaymentRequest extends FormRequest
                     return;
                 }
 
-                if (abs($submittedAmount - $outstandingBalance) > 0.01) {
+                if ($submittedAmount - $outstandingBalance > 0.01) {
                     $validator->errors()->add(
                         'amount',
-                        'Partial payments are not accepted. Enter the full outstanding balance.',
+                        'Payment amount cannot exceed the outstanding booking balance.',
                     );
                 }
             },

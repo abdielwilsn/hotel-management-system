@@ -3,6 +3,7 @@ import { useForm, Link, usePage, router } from '@inertiajs/vue3';
 import {
     CalendarDays,
     CircleDollarSign,
+    FileText,
     Plus,
     Trash2,
     Edit,
@@ -29,7 +30,15 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { index, store, edit, destroy } from '@/routes/bookings';
+import {
+    checkout,
+    destroy,
+    edit,
+    extendStay,
+    index,
+    processPayment as processBookingPayment,
+    store,
+} from '@/routes/bookings';
 import type { Team } from '@/types';
 
 type RoomOption = {
@@ -56,10 +65,24 @@ type Booking = {
     invoice?: {
         id: number;
         invoice_number: string;
+        issue_date: string;
+        due_date: string;
         total_amount: number;
         paid_amount: number;
         status: string;
+        payments: Array<{
+            id: number;
+            payment_number: string;
+            payment_date: string;
+            amount: number;
+            method: string;
+            status: string;
+            reference: string | null;
+        }>;
     } | null;
+    extension_history?: Array<{
+        label: string;
+    }>;
 };
 
 type Props = {
@@ -103,8 +126,14 @@ defineOptions({
 const showCreateForm = ref(false);
 const showDeleteDialog = ref(false);
 const showProcessPaymentDialog = ref(false);
+const showCheckoutDialog = ref(false);
+const showExtendStayDialog = ref(false);
+const showFolioDialog = ref(false);
 const bookingToDelete = ref<Booking | null>(null);
 const bookingToProcessPayment = ref<Booking | null>(null);
+const bookingToCheckout = ref<Booking | null>(null);
+const bookingToExtend = ref<Booking | null>(null);
+const bookingToViewFolio = ref<Booking | null>(null);
 
 const filtersForm = useForm({
     search: props.filters.search ?? '',
@@ -142,6 +171,17 @@ const processPaymentForm = useForm({
     payment_date: new Date().toISOString().split('T')[0],
     status: 'completed',
     reference: '',
+    notes: '',
+});
+const checkoutForm = useForm({
+    settlement_amount: '',
+    settlement_method: 'cash',
+    settlement_payment_date: new Date().toISOString().split('T')[0],
+    settlement_reference: '',
+    settlement_notes: '',
+});
+const extendStayForm = useForm({
+    check_out_date: '',
     notes: '',
 });
 
@@ -213,6 +253,14 @@ const statusColor = (status: string) => {
 const statusLabel = (status: string) =>
     status.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
+const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('en-NG', {
+        style: 'currency',
+        currency: 'NGN',
+    }).format(Number(value));
+
+const paymentMethodLabel = (method: string) => statusLabel(method);
+
 const isReservation = (booking: Booking) =>
     booking.status === 'pending' && bookingBalance(booking) > 0;
 
@@ -223,6 +271,32 @@ const bookingStatusColor = (booking: Booking) =>
     isReservation(booking)
         ? 'bg-violet-100 text-violet-800'
         : statusColor(booking.status);
+
+const bookingPaymentTone = (booking: Booking) => {
+    const balance = bookingBalance(booking);
+
+    if (balance <= 0) {
+        return 'text-emerald-700 bg-emerald-50 ring-emerald-100';
+    }
+
+    if (balance < Number(booking.total_amount)) {
+        return 'text-amber-700 bg-amber-50 ring-amber-100';
+    }
+
+    return 'text-slate-700 bg-slate-50 ring-slate-200';
+};
+
+const bookingMetaLabel = (booking: Booking) =>
+    booking.room ? `Room ${booking.room.room_number}` : 'Room not assigned';
+
+const bookingStayLabel = (booking: Booking) =>
+    `${formatDate(booking.check_in_date)} → ${formatDate(booking.check_out_date)}`;
+
+const canCheckoutBooking = (booking: Booking) =>
+    booking.status === 'checked_in';
+
+const canExtendBooking = (booking: Booking) =>
+    booking.status === 'confirmed' || booking.status === 'checked_in';
 
 const optionStatusLabel = (status: string) =>
     status === 'pending' ? 'Reservation' : statusLabel(status);
@@ -304,17 +378,106 @@ const openProcessPaymentDialog = (booking: Booking) => {
     showProcessPaymentDialog.value = true;
 };
 
+const openCheckoutDialog = (booking: Booking) => {
+    bookingToCheckout.value = booking;
+    checkoutForm.reset();
+    checkoutForm.settlement_amount = bookingBalance(booking).toFixed(2);
+    checkoutForm.settlement_method = 'cash';
+    checkoutForm.settlement_payment_date = new Date()
+        .toISOString()
+        .split('T')[0];
+    showCheckoutDialog.value = true;
+};
+
+const openExtendStayDialog = (booking: Booking) => {
+    bookingToExtend.value = booking;
+    extendStayForm.reset();
+    extendStayForm.check_out_date = booking.check_out_date;
+    showExtendStayDialog.value = true;
+};
+
+const openFolioDialog = (booking: Booking) => {
+    bookingToViewFolio.value = booking;
+    showFolioDialog.value = true;
+};
+
 const processPayment = () => {
     if (!bookingToProcessPayment.value) {
         return;
     }
 
     processPaymentForm.post(
-        `/${props.team.slug}/bookings/${bookingToProcessPayment.value.id}/process-payment`,
+        processBookingPayment([
+            props.team.slug,
+            bookingToProcessPayment.value.id,
+        ]).url,
         {
             onSuccess: () => {
                 showProcessPaymentDialog.value = false;
                 bookingToProcessPayment.value = null;
+            },
+        },
+    );
+};
+
+const checkoutBalance = computed(() => {
+    if (!bookingToCheckout.value) {
+        return 0;
+    }
+
+    return bookingBalance(bookingToCheckout.value);
+});
+
+const extensionPreview = computed(() => {
+    if (!bookingToExtend.value || !extendStayForm.check_out_date) {
+        return { extraNights: 0, extraAmount: 0 };
+    }
+
+    const currentCheckOut = new Date(bookingToExtend.value.check_out_date);
+    const proposedCheckOut = new Date(extendStayForm.check_out_date);
+    const diff = proposedCheckOut.getTime() - currentCheckOut.getTime();
+    const extraNights = Math.max(0, Math.round(diff / (1000 * 60 * 60 * 24)));
+    const extraAmount =
+        extraNights * Number(bookingToExtend.value.price_per_night);
+
+    return { extraNights, extraAmount };
+});
+
+const folioPayments = computed(
+    () => bookingToViewFolio.value?.invoice?.payments ?? [],
+);
+
+const folioExtensionHistory = computed(
+    () => bookingToViewFolio.value?.extension_history ?? [],
+);
+
+const checkoutBooking = () => {
+    if (!bookingToCheckout.value) {
+        return;
+    }
+
+    checkoutForm.post(
+        checkout([props.team.slug, bookingToCheckout.value.id]).url,
+        {
+            onSuccess: () => {
+                showCheckoutDialog.value = false;
+                bookingToCheckout.value = null;
+            },
+        },
+    );
+};
+
+const extendBookingStay = () => {
+    if (!bookingToExtend.value) {
+        return;
+    }
+
+    extendStayForm.post(
+        extendStay([props.team.slug, bookingToExtend.value.id]).url,
+        {
+            onSuccess: () => {
+                showExtendStayDialog.value = false;
+                bookingToExtend.value = null;
             },
         },
     );
@@ -510,7 +673,7 @@ const deleteBooking = () => {
         </Card>
 
         <!-- Create useForm -->
-        <Card v-if="showCreateForm" class="border-hotel-primary/20">
+        <Card v-if="showCreateForm">
             <CardHeader>
                 <CardTitle>New Booking</CardTitle>
             </CardHeader>
@@ -701,6 +864,10 @@ const deleteBooking = () => {
                                     :message="form.errors.payment_amount"
                                     class="mt-2"
                                 />
+                                <p class="mt-2 text-xs text-gray-500">
+                                    You can take a deposit now and collect the
+                                    balance later.
+                                </p>
                             </div>
 
                             <div>
@@ -810,109 +977,309 @@ const deleteBooking = () => {
         </Card>
 
         <!-- Bookings List -->
-        <div v-if="bookings.length > 0" class="space-y-3">
-            <Card v-for="booking in bookings" :key="booking.id">
-                <CardContent class="py-4">
+        <div v-if="bookings.length > 0" class="space-y-4">
+            <Card
+                v-for="booking in bookings"
+                :key="booking.id"
+                :accent-class="
+                    booking.status === 'checked_in'
+                        ? 'from-emerald-500 via-emerald-400 to-teal-400'
+                        : booking.status === 'confirmed'
+                          ? 'from-blue-500 via-sky-400 to-cyan-400'
+                          : booking.status === 'cancelled'
+                            ? 'from-rose-500 via-red-400 to-orange-400'
+                            : 'from-violet-500 via-fuchsia-400 to-pink-400'
+                "
+            >
+                <CardContent class="p-0">
                     <div
-                        class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
+                        class="grid gap-0 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.95fr)_auto]"
                     >
-                        <!-- Guest Info -->
-                        <div class="min-w-0 flex-1">
-                            <div class="flex items-center gap-3">
-                                <div>
-                                    <p class="font-semibold text-gray-900">
-                                        {{ booking.guest_name }}
-                                    </p>
-                                    <p class="text-sm text-gray-500">
+                        <div class="space-y-4 p-5 lg:p-6">
+                            <div
+                                class="flex flex-wrap items-start justify-between gap-3"
+                            >
+                                <div class="min-w-0 space-y-2">
+                                    <div
+                                        class="flex flex-wrap items-center gap-2"
+                                    >
+                                        <h3
+                                            class="text-lg font-semibold tracking-tight break-words text-gray-900"
+                                        >
+                                            {{ booking.guest_name }}
+                                        </h3>
+                                        <Badge
+                                            :class="bookingStatusColor(booking)"
+                                        >
+                                            {{ bookingStatusLabel(booking) }}
+                                        </Badge>
+                                    </div>
+                                    <p
+                                        class="text-sm break-words text-gray-500"
+                                    >
                                         {{ booking.guest_email }}
+                                        <span v-if="booking.guest_phone">
+                                            · {{ booking.guest_phone }}
+                                        </span>
                                     </p>
                                 </div>
-                                <Badge :class="bookingStatusColor(booking)">
-                                    {{ bookingStatusLabel(booking) }}
-                                </Badge>
+
+                                <div
+                                    class="max-w-56 truncate rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200"
+                                >
+                                    {{ bookingMetaLabel(booking) }}
+                                </div>
+                            </div>
+
+                            <div
+                                class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+                            >
+                                <div
+                                    class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200"
+                                >
+                                    <p
+                                        class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                    >
+                                        Stay
+                                    </p>
+                                    <p
+                                        class="mt-1 text-sm font-semibold break-words text-slate-900"
+                                    >
+                                        {{ bookingStayLabel(booking) }}
+                                    </p>
+                                    <p
+                                        class="text-xs break-words text-slate-500"
+                                    >
+                                        {{
+                                            nights(
+                                                booking.check_in_date,
+                                                booking.check_out_date,
+                                            )
+                                        }}
+                                        nights
+                                    </p>
+                                </div>
+
+                                <div
+                                    class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200"
+                                >
+                                    <p
+                                        class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                    >
+                                        Billing
+                                    </p>
+                                    <p
+                                        class="mt-1 text-sm font-semibold break-words text-slate-900"
+                                    >
+                                        {{
+                                            formatCurrency(
+                                                Number(booking.total_amount),
+                                            )
+                                        }}
+                                    </p>
+                                    <p
+                                        class="text-xs break-words text-slate-500"
+                                    >
+                                        {{
+                                            booking.invoice?.invoice_number ??
+                                            'Auto on save'
+                                        }}
+                                    </p>
+                                </div>
+
+                                <div
+                                    class="rounded-2xl p-3 ring-1"
+                                    :class="bookingPaymentTone(booking)"
+                                >
+                                    <p
+                                        class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                    >
+                                        Balance
+                                    </p>
+                                    <p class="mt-1 text-sm font-semibold">
+                                        {{
+                                            formatCurrency(
+                                                bookingBalance(booking),
+                                            )
+                                        }}
+                                    </p>
+                                    <p class="text-xs">
+                                        {{
+                                            statusLabel(
+                                                booking.invoice?.status ??
+                                                    'issued',
+                                            )
+                                        }}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-wrap gap-2">
+                                <span
+                                    class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
+                                >
+                                    {{
+                                        booking.room?.room_type ??
+                                        'Room type unavailable'
+                                    }}
+                                </span>
+                                <span
+                                    class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
+                                >
+                                    {{
+                                        booking.room
+                                            ? `Room ${booking.room.room_number}`
+                                            : 'No room assigned'
+                                    }}
+                                </span>
+                                <span
+                                    class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
+                                >
+                                    {{ booking.number_of_guests }} guest{{
+                                        booking.number_of_guests > 1 ? 's' : ''
+                                    }}
+                                </span>
                             </div>
                         </div>
 
-                        <!-- Room & Dates -->
                         <div
-                            class="flex flex-col gap-1 text-sm text-gray-600 md:text-right"
+                            class="border-t border-slate-200 bg-slate-50/70 p-5 lg:border-t-0 lg:border-l lg:p-6"
                         >
-                            <p>
-                                <strong
-                                    >Room
-                                    {{ booking.room?.room_number }}</strong
+                            <div class="space-y-3">
+                                <div
+                                    class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
                                 >
-                                · {{ booking.room?.room_type }}
-                            </p>
-                            <p>
-                                {{ formatDate(booking.check_in_date) }} →
-                                {{ formatDate(booking.check_out_date) }}
-                                ({{
-                                    nights(
-                                        booking.check_in_date,
-                                        booking.check_out_date,
-                                    )
-                                }}
-                                nights)
-                            </p>
-                            <p class="font-medium text-gray-900">
-                                ₦{{ Number(booking.total_amount).toFixed(2) }}
-                            </p>
-                            <p class="text-xs text-gray-500">
-                                Invoice:
-                                {{
-                                    booking.invoice?.invoice_number ??
-                                    'Auto on save'
-                                }}
-                            </p>
-                            <p class="text-xs text-gray-500">
-                                Balance: ₦{{
-                                    bookingBalance(booking).toFixed(2)
-                                }}
-                            </p>
+                                    <p
+                                        class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                    >
+                                        Check-in / Check-out
+                                    </p>
+                                    <p
+                                        class="mt-1 text-sm font-semibold text-slate-900"
+                                    >
+                                        {{ formatDate(booking.check_in_date) }}
+                                    </p>
+                                    <p class="text-xs text-slate-500">
+                                        {{ formatDate(booking.check_out_date) }}
+                                    </p>
+                                </div>
+
+                                <div
+                                    class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
+                                >
+                                    <p
+                                        class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                    >
+                                        Payment Status
+                                    </p>
+                                    <p
+                                        class="mt-1 text-sm font-semibold text-slate-900"
+                                    >
+                                        {{
+                                            statusLabel(
+                                                booking.invoice?.status ??
+                                                    'issued',
+                                            )
+                                        }}
+                                    </p>
+                                    <p class="text-xs text-slate-500">
+                                        Remaining balance updates automatically.
+                                    </p>
+                                </div>
+
+                                <div
+                                    v-if="booking.notes"
+                                    class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
+                                >
+                                    <p
+                                        class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                    >
+                                        Notes
+                                    </p>
+                                    <p
+                                        class="mt-1 line-clamp-3 text-sm text-slate-600"
+                                    >
+                                        {{ booking.notes }}
+                                    </p>
+                                </div>
+                            </div>
                         </div>
 
-                        <!-- Actions -->
-                        <div class="flex gap-2">
-                            <Link
-                                :href="edit([props.team.slug, booking.id]).url"
-                            >
+                        <div
+                            class="flex items-stretch border-t border-slate-200 p-5 lg:border-t-0 lg:border-l lg:p-6"
+                        >
+                            <div class="flex w-full flex-col gap-2 sm:w-auto">
+                                <Link
+                                    :href="
+                                        edit([props.team.slug, booking.id]).url
+                                    "
+                                    class="w-full"
+                                >
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        class="h-10 w-full justify-start gap-2 rounded-xl"
+                                    >
+                                        <Edit class="h-4 w-4" />
+                                        Edit
+                                    </Button>
+                                </Link>
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    class="gap-2"
+                                    class="h-10 w-full justify-start gap-2 rounded-xl"
+                                    @click="openFolioDialog(booking)"
                                 >
-                                    <Edit class="h-4 w-4" />
-                                    Edit
+                                    <FileText class="h-4 w-4" />
+                                    View Folio
                                 </Button>
-                            </Link>
-                            <Button
-                                v-if="bookingBalance(booking) > 0"
-                                variant="outline"
-                                size="sm"
-                                class="gap-2"
-                                @click="openProcessPaymentDialog(booking)"
-                            >
-                                <CircleDollarSign class="h-4 w-4" />
-                                Process Payment
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                :disabled="!isAdmin"
-                                :title="
-                                    isAdmin
-                                        ? 'Delete booking'
-                                        : 'Admin only action'
-                                "
-                                @click="
-                                    bookingToDelete = booking;
-                                    showDeleteDialog = true;
-                                "
-                                class="text-red-600 hover:bg-red-50 hover:text-red-700"
-                            >
-                                <Trash2 class="h-4 w-4" />
-                            </Button>
+                                <Button
+                                    v-if="bookingBalance(booking) > 0"
+                                    variant="outline"
+                                    size="sm"
+                                    class="h-10 w-full justify-start gap-2 rounded-xl"
+                                    @click="openProcessPaymentDialog(booking)"
+                                >
+                                    <CircleDollarSign class="h-4 w-4" />
+                                    Process Payment
+                                </Button>
+                                <Button
+                                    v-if="canExtendBooking(booking)"
+                                    variant="outline"
+                                    size="sm"
+                                    class="h-10 w-full justify-start gap-2 rounded-xl"
+                                    @click="openExtendStayDialog(booking)"
+                                >
+                                    Extend Stay
+                                </Button>
+                                <Button
+                                    v-if="canCheckoutBooking(booking)"
+                                    variant="outline"
+                                    size="sm"
+                                    class="h-10 w-full justify-start gap-2 rounded-xl"
+                                    @click="openCheckoutDialog(booking)"
+                                >
+                                    Check Out
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    :disabled="!isAdmin"
+                                    :title="
+                                        isAdmin
+                                            ? 'Delete booking'
+                                            : 'Admin only action'
+                                    "
+                                    @click="
+                                        bookingToDelete = booking;
+                                        showDeleteDialog = true;
+                                    "
+                                    class="h-10 w-full justify-start gap-2 rounded-xl border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                >
+                                    <Trash2 class="h-4 w-4" />
+                                    Delete
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 </CardContent>
@@ -1003,6 +1370,15 @@ const deleteBooking = () => {
                             :message="processPaymentForm.errors.amount"
                             class="mt-2"
                         />
+                        <p class="mt-2 text-xs text-gray-500">
+                            Remaining balance: ₦{{
+                                bookingToProcessPayment
+                                    ? bookingBalance(
+                                          bookingToProcessPayment,
+                                      ).toFixed(2)
+                                    : '0.00'
+                            }}
+                        </p>
                     </div>
 
                     <div>
@@ -1070,6 +1446,482 @@ const deleteBooking = () => {
                                 processPaymentForm.processing
                                     ? 'Processing...'
                                     : 'Process Payment'
+                            }}
+                        </Button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog :open="showFolioDialog" @update:open="showFolioDialog = $event">
+            <DialogContent class="max-w-3xl">
+                <DialogHeader>
+                    <DialogTitle>Guest Folio</DialogTitle>
+                    <DialogDescription>
+                        Review the stay summary, payment ledger, and extension
+                        history for
+                        <strong>{{ bookingToViewFolio?.guest_name }}</strong
+                        >.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div v-if="bookingToViewFolio" class="space-y-4">
+                    <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+                        <div
+                            class="rounded border border-gray-200 bg-gray-50 p-3 text-sm"
+                        >
+                            <p
+                                class="text-xs tracking-wide text-gray-500 uppercase"
+                            >
+                                Stay
+                            </p>
+                            <p class="mt-1 font-medium text-gray-900">
+                                {{
+                                    formatDate(bookingToViewFolio.check_in_date)
+                                }}
+                                to
+                                {{
+                                    formatDate(
+                                        bookingToViewFolio.check_out_date,
+                                    )
+                                }}
+                            </p>
+                            <p class="text-gray-600">
+                                {{
+                                    nights(
+                                        bookingToViewFolio.check_in_date,
+                                        bookingToViewFolio.check_out_date,
+                                    )
+                                }}
+                                nights in room
+                                {{ bookingToViewFolio.room?.room_number }}
+                            </p>
+                        </div>
+
+                        <div
+                            class="rounded border border-gray-200 bg-gray-50 p-3 text-sm"
+                        >
+                            <p
+                                class="text-xs tracking-wide text-gray-500 uppercase"
+                            >
+                                Invoice
+                            </p>
+                            <p class="mt-1 font-medium text-gray-900">
+                                {{
+                                    bookingToViewFolio.invoice
+                                        ?.invoice_number ?? 'Pending'
+                                }}
+                            </p>
+                            <p class="text-gray-600">
+                                Issued
+                                {{
+                                    bookingToViewFolio.invoice?.issue_date
+                                        ? formatDate(
+                                              bookingToViewFolio.invoice
+                                                  .issue_date,
+                                          )
+                                        : 'on booking save'
+                                }}
+                            </p>
+                        </div>
+
+                        <div
+                            class="rounded border border-gray-200 bg-gray-50 p-3 text-sm"
+                        >
+                            <p
+                                class="text-xs tracking-wide text-gray-500 uppercase"
+                            >
+                                Balance
+                            </p>
+                            <p class="mt-1 font-medium text-gray-900">
+                                {{
+                                    formatCurrency(
+                                        bookingBalance(bookingToViewFolio),
+                                    )
+                                }}
+                            </p>
+                            <p class="text-gray-600">
+                                {{
+                                    statusLabel(
+                                        bookingToViewFolio.invoice?.status ??
+                                            'issued',
+                                    )
+                                }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+                        <div class="rounded border border-gray-200 p-3 text-sm">
+                            <p
+                                class="text-xs tracking-wide text-gray-500 uppercase"
+                            >
+                                Total Charges
+                            </p>
+                            <p class="mt-1 font-semibold text-gray-900">
+                                {{
+                                    formatCurrency(
+                                        Number(
+                                            bookingToViewFolio.invoice
+                                                ?.total_amount ??
+                                                bookingToViewFolio.total_amount,
+                                        ),
+                                    )
+                                }}
+                            </p>
+                        </div>
+
+                        <div class="rounded border border-gray-200 p-3 text-sm">
+                            <p
+                                class="text-xs tracking-wide text-gray-500 uppercase"
+                            >
+                                Paid So Far
+                            </p>
+                            <p class="mt-1 font-semibold text-gray-900">
+                                {{
+                                    formatCurrency(
+                                        Number(
+                                            bookingToViewFolio.invoice
+                                                ?.paid_amount ?? 0,
+                                        ),
+                                    )
+                                }}
+                            </p>
+                        </div>
+
+                        <div class="rounded border border-gray-200 p-3 text-sm">
+                            <p
+                                class="text-xs tracking-wide text-gray-500 uppercase"
+                            >
+                                Nightly Rate
+                            </p>
+                            <p class="mt-1 font-semibold text-gray-900">
+                                {{
+                                    formatCurrency(
+                                        Number(
+                                            bookingToViewFolio.price_per_night,
+                                        ),
+                                    )
+                                }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div
+                        class="grid grid-cols-1 gap-4 lg:grid-cols-[1.5fr_1fr]"
+                    >
+                        <div class="rounded border border-gray-200">
+                            <div class="border-b border-gray-200 px-4 py-3">
+                                <h3 class="text-sm font-semibold text-gray-900">
+                                    Payment Ledger
+                                </h3>
+                            </div>
+
+                            <div
+                                v-if="folioPayments.length > 0"
+                                class="divide-y divide-gray-200"
+                            >
+                                <div
+                                    v-for="payment in folioPayments"
+                                    :key="payment.id"
+                                    class="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                                >
+                                    <div>
+                                        <p class="font-medium text-gray-900">
+                                            {{ payment.payment_number }}
+                                        </p>
+                                        <p class="text-gray-500">
+                                            {{
+                                                formatDate(payment.payment_date)
+                                            }}
+                                            ·
+                                            {{
+                                                paymentMethodLabel(
+                                                    payment.method,
+                                                )
+                                            }}
+                                        </p>
+                                        <p
+                                            v-if="payment.reference"
+                                            class="text-xs text-gray-500"
+                                        >
+                                            Ref: {{ payment.reference }}
+                                        </p>
+                                    </div>
+
+                                    <div class="text-right">
+                                        <p class="font-medium text-gray-900">
+                                            {{
+                                                formatCurrency(
+                                                    Number(payment.amount),
+                                                )
+                                            }}
+                                        </p>
+                                        <p class="text-xs text-gray-500">
+                                            {{ statusLabel(payment.status) }}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div v-else class="px-4 py-6 text-sm text-gray-500">
+                                No payments have been recorded for this stay
+                                yet.
+                            </div>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div class="rounded border border-gray-200 p-4">
+                                <h3 class="text-sm font-semibold text-gray-900">
+                                    Extension History
+                                </h3>
+                                <div
+                                    v-if="folioExtensionHistory.length > 0"
+                                    class="mt-3 space-y-2 text-sm text-gray-600"
+                                >
+                                    <div
+                                        v-for="(
+                                            entry, index
+                                        ) in folioExtensionHistory"
+                                        :key="`${entry.label}-${index}`"
+                                        class="rounded bg-gray-50 px-3 py-2"
+                                    >
+                                        {{ entry.label }}
+                                    </div>
+                                </div>
+                                <p v-else class="mt-3 text-sm text-gray-500">
+                                    No stay extensions have been recorded for
+                                    this booking.
+                                </p>
+                            </div>
+
+                            <div class="rounded border border-gray-200 p-4">
+                                <h3 class="text-sm font-semibold text-gray-900">
+                                    Front Desk Notes
+                                </h3>
+                                <p class="mt-3 text-sm text-gray-600">
+                                    {{
+                                        bookingToViewFolio.notes ||
+                                        'No notes saved for this booking.'
+                                    }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end pt-2">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        @click="showFolioDialog = false"
+                    >
+                        Close
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog
+            :open="showCheckoutDialog"
+            @update:open="showCheckoutDialog = $event"
+        >
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Check Out Guest</DialogTitle>
+                    <DialogDescription>
+                        Close the stay for
+                        <strong>{{ bookingToCheckout?.guest_name }}</strong>
+                        and settle any balance that is still outstanding.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <form @submit.prevent="checkoutBooking" class="space-y-3">
+                    <div>
+                        <Label for="checkout_amount">Remaining Balance</Label>
+                        <Input
+                            id="checkout_amount"
+                            v-model="checkoutForm.settlement_amount"
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            :disabled="checkoutBalance <= 0"
+                        />
+                        <InputError
+                            :message="checkoutForm.errors.settlement_amount"
+                            class="mt-2"
+                        />
+                        <p class="mt-2 text-xs text-gray-500">
+                            Outstanding now: ₦{{ checkoutBalance.toFixed(2) }}
+                        </p>
+                    </div>
+
+                    <div
+                        v-if="checkoutBalance > 0"
+                        class="grid grid-cols-1 gap-3 md:grid-cols-2"
+                    >
+                        <div>
+                            <Label for="checkout_method"
+                                >Payment Method *</Label
+                            >
+                            <Select v-model="checkoutForm.settlement_method">
+                                <SelectTrigger
+                                    id="checkout_method"
+                                    class="mt-1"
+                                >
+                                    <SelectValue placeholder="Select method" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="cash">Cash</SelectItem>
+                                    <SelectItem value="card">Card</SelectItem>
+                                    <SelectItem value="bank_transfer"
+                                        >Bank Transfer</SelectItem
+                                    >
+                                    <SelectItem value="online"
+                                        >Online</SelectItem
+                                    >
+                                    <SelectItem value="other">Other</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <InputError
+                                :message="checkoutForm.errors.settlement_method"
+                                class="mt-2"
+                            />
+                        </div>
+
+                        <div>
+                            <Label for="checkout_payment_date"
+                                >Payment Date *</Label
+                            >
+                            <Input
+                                id="checkout_payment_date"
+                                v-model="checkoutForm.settlement_payment_date"
+                                type="date"
+                                class="mt-1"
+                            />
+                            <InputError
+                                :message="
+                                    checkoutForm.errors.settlement_payment_date
+                                "
+                                class="mt-2"
+                            />
+                        </div>
+
+                        <div class="md:col-span-2">
+                            <Label for="checkout_reference">Reference</Label>
+                            <Input
+                                id="checkout_reference"
+                                v-model="checkoutForm.settlement_reference"
+                                type="text"
+                                class="mt-1"
+                                placeholder="Transaction reference"
+                            />
+                            <InputError
+                                :message="
+                                    checkoutForm.errors.settlement_reference
+                                "
+                                class="mt-2"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="showCheckoutDialog = false"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="submit"
+                            :disabled="checkoutForm.processing"
+                        >
+                            {{
+                                checkoutForm.processing
+                                    ? 'Checking Out...'
+                                    : 'Confirm Checkout'
+                            }}
+                        </Button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog
+            :open="showExtendStayDialog"
+            @update:open="showExtendStayDialog = $event"
+        >
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Extend Stay</DialogTitle>
+                    <DialogDescription>
+                        Update the departure date for
+                        <strong>{{ bookingToExtend?.guest_name }}</strong>
+                        and add the extension amount to the invoice.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <form @submit.prevent="extendBookingStay" class="space-y-3">
+                    <div>
+                        <Label for="extend_check_out_date"
+                            >New Check-out Date *</Label
+                        >
+                        <Input
+                            id="extend_check_out_date"
+                            v-model="extendStayForm.check_out_date"
+                            type="date"
+                        />
+                        <InputError
+                            :message="extendStayForm.errors.check_out_date"
+                            class="mt-2"
+                        />
+                    </div>
+
+                    <div
+                        class="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600"
+                    >
+                        <p>
+                            Additional nights:
+                            {{ extensionPreview.extraNights }}
+                        </p>
+                        <p>
+                            Additional amount: ₦{{
+                                extensionPreview.extraAmount.toFixed(2)
+                            }}
+                        </p>
+                    </div>
+
+                    <div>
+                        <Label for="extend_notes">Extension Notes</Label>
+                        <Input
+                            id="extend_notes"
+                            v-model="extendStayForm.notes"
+                            type="text"
+                            placeholder="Reason for the extension"
+                        />
+                        <InputError
+                            :message="extendStayForm.errors.notes"
+                            class="mt-2"
+                        />
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="showExtendStayDialog = false"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="submit"
+                            :disabled="extendStayForm.processing"
+                        >
+                            {{
+                                extendStayForm.processing
+                                    ? 'Saving...'
+                                    : 'Extend Stay'
                             }}
                         </Button>
                     </div>

@@ -91,6 +91,37 @@ const statusColor = (status: string) => {
     return colors[status] ?? 'bg-gray-100 text-gray-800';
 };
 
+const expenseAccentClass = (expense: Expense) => {
+    if (expense.status === 'paid') {
+        return 'from-emerald-500 via-emerald-400 to-teal-400';
+    }
+
+    if (expense.status === 'pending') {
+        return 'from-amber-500 via-orange-400 to-yellow-400';
+    }
+
+    if (expense.status === 'cancelled') {
+        return 'from-slate-500 via-gray-400 to-zinc-400';
+    }
+
+    return 'from-blue-500 via-sky-400 to-cyan-400';
+};
+
+const expenseToneClass = (expense: Expense) => {
+    if (expense.status === 'paid') {
+        return 'text-emerald-700 bg-emerald-50 ring-emerald-100';
+    }
+
+    if (expense.status === 'pending') {
+        return 'text-amber-700 bg-amber-50 ring-amber-100';
+    }
+
+    return 'text-slate-700 bg-slate-50 ring-slate-200';
+};
+
+const expenseSummaryLabel = (expense: Expense) =>
+    expense.vendor ? expense.vendor : 'No vendor recorded';
+
 const submit = () => {
     form.post(store(props.team.slug).url, {
         onSuccess: () => {
@@ -108,12 +139,15 @@ const deleteExpense = () => {
         return;
     }
 
-    deleteForm.delete(destroy([props.team.slug, expenseToDelete.value.id]).url, {
-        onSuccess: () => {
-            showDeleteDialog.value = false;
-            expenseToDelete.value = null;
+    deleteForm.delete(
+        destroy([props.team.slug, expenseToDelete.value.id]).url,
+        {
+            onSuccess: () => {
+                showDeleteDialog.value = false;
+                expenseToDelete.value = null;
+            },
         },
-    });
+    );
 };
 </script>
 
@@ -239,7 +273,7 @@ const deleteExpense = () => {
                         <textarea
                             id="description"
                             v-model="form.description"
-                            class="mt-1 flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+                            class="mt-1 flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
                         />
                         <InputError
                             :message="form.errors.description"
@@ -287,64 +321,216 @@ const deleteExpense = () => {
                     No expenses yet.
                 </div>
 
-                <div v-else class="space-y-3">
-                    <div
+                <div v-else class="space-y-4">
+                    <Card
                         v-for="expense in expenses"
                         :key="expense.id"
-                        class="rounded-lg border p-4"
+                        :accent-class="expenseAccentClass(expense)"
                     >
-                        <div class="flex items-start justify-between gap-4">
-                            <div>
-                                <p class="font-semibold">{{ expense.title }}</p>
-                                <p class="text-sm text-muted-foreground">
-                                    {{ labelize(expense.category) }} ·
-                                    {{ expense.incurred_date }}
-                                    <span v-if="expense.vendor"
-                                        >· {{ expense.vendor }}</span
-                                    >
-                                </p>
-                                <p
-                                    v-if="expense.description"
-                                    class="mt-1 text-sm text-muted-foreground"
-                                >
-                                    {{ expense.description }}
-                                </p>
-                            </div>
-
-                            <div class="text-right">
-                                <p class="text-lg font-semibold">
-                                    {{ formatCurrency(expense.amount) }}
-                                </p>
-                                <Badge :class="statusColor(expense.status)">
-                                    {{ labelize(expense.status) }}
-                                </Badge>
-                            </div>
-                        </div>
-
-                        <div class="mt-3 flex justify-end gap-2">
-                            <Button variant="outline" size="sm" as-child>
-                                <Link
-                                    :href="edit([team.slug, expense.id]).url"
-                                    class="gap-1.5"
-                                >
-                                    <Edit class="size-3.5" />
-                                    Edit
-                                </Link>
-                            </Button>
-                            <Button
-                                variant="destructive"
-                                size="sm"
-                                class="gap-1.5"
-                                @click="
-                                    expenseToDelete = expense;
-                                    showDeleteDialog = true;
-                                "
+                        <CardContent class="p-0">
+                            <div
+                                class="grid gap-0 lg:grid-cols-[minmax(0,1.35fr)_minmax(260px,0.9fr)_auto]"
                             >
-                                <Trash2 class="size-3.5" />
-                                Delete
-                            </Button>
-                        </div>
-                    </div>
+                                <div class="space-y-4 p-5 lg:p-6">
+                                    <div
+                                        class="flex flex-wrap items-start justify-between gap-3"
+                                    >
+                                        <div class="min-w-0 space-y-2">
+                                            <div
+                                                class="flex flex-wrap items-center gap-2"
+                                            >
+                                                <h3
+                                                    class="text-lg font-semibold tracking-tight break-words text-gray-900"
+                                                >
+                                                    {{ expense.title }}
+                                                </h3>
+                                                <Badge
+                                                    :class="
+                                                        statusColor(
+                                                            expense.status,
+                                                        )
+                                                    "
+                                                >
+                                                    {{
+                                                        labelize(expense.status)
+                                                    }}
+                                                </Badge>
+                                            </div>
+                                            <p
+                                                class="text-sm break-words text-gray-500"
+                                            >
+                                                {{ labelize(expense.category) }}
+                                                · {{ expense.incurred_date }}
+                                            </p>
+                                        </div>
+
+                                        <div
+                                            class="max-w-56 truncate rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200"
+                                        >
+                                            {{ expenseSummaryLabel(expense) }}
+                                        </div>
+                                    </div>
+
+                                    <div
+                                        class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+                                    >
+                                        <div
+                                            class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200"
+                                        >
+                                            <p
+                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                            >
+                                                Amount
+                                            </p>
+                                            <p
+                                                class="mt-1 text-sm font-semibold break-words text-slate-900"
+                                            >
+                                                {{
+                                                    formatCurrency(
+                                                        expense.amount,
+                                                    )
+                                                }}
+                                            </p>
+                                            <p
+                                                class="text-xs break-words text-slate-500"
+                                            >
+                                                {{ labelize(expense.category) }}
+                                            </p>
+                                        </div>
+
+                                        <div
+                                            class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200"
+                                        >
+                                            <p
+                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                            >
+                                                Incurred On
+                                            </p>
+                                            <p
+                                                class="mt-1 text-sm font-semibold break-words text-slate-900"
+                                            >
+                                                {{ expense.incurred_date }}
+                                            </p>
+                                            <p
+                                                class="text-xs break-words text-slate-500"
+                                            >
+                                                {{
+                                                    expense.vendor ??
+                                                    'No vendor'
+                                                }}
+                                            </p>
+                                        </div>
+
+                                        <div
+                                            class="rounded-2xl p-3 ring-1"
+                                            :class="expenseToneClass(expense)"
+                                        >
+                                            <p
+                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                            >
+                                                Status
+                                            </p>
+                                            <p
+                                                class="mt-1 text-sm font-semibold"
+                                            >
+                                                {{ labelize(expense.status) }}
+                                            </p>
+                                            <p class="text-xs">
+                                                {{
+                                                    expense.description
+                                                        ? 'Description included'
+                                                        : 'No description'
+                                                }}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex flex-wrap gap-2">
+                                        <span
+                                            class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
+                                        >
+                                            {{ labelize(expense.category) }}
+                                        </span>
+                                        <span
+                                            class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
+                                        >
+                                            {{
+                                                expense.vendor ??
+                                                'No vendor recorded'
+                                            }}
+                                        </span>
+                                        <span
+                                            v-if="expense.description"
+                                            class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
+                                        >
+                                            Notes added
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div
+                                    class="border-t border-slate-200 bg-slate-50/70 p-5 lg:border-t-0 lg:border-l lg:p-6"
+                                >
+                                    <div class="space-y-3">
+                                        <div
+                                            v-if="expense.description"
+                                            class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
+                                        >
+                                            <p
+                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                            >
+                                                Description
+                                            </p>
+                                            <p
+                                                class="mt-1 line-clamp-3 text-sm text-slate-600"
+                                            >
+                                                {{ expense.description }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div
+                                    class="flex items-stretch border-t border-slate-200 p-5 lg:border-t-0 lg:border-l lg:p-6"
+                                >
+                                    <div
+                                        class="flex w-full flex-col gap-2 sm:w-auto"
+                                    >
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            as-child
+                                            class="h-10 w-full justify-start gap-2 rounded-xl"
+                                        >
+                                            <Link
+                                                :href="
+                                                    edit([
+                                                        team.slug,
+                                                        expense.id,
+                                                    ]).url
+                                                "
+                                            >
+                                                <Edit class="size-3.5" />
+                                                Edit
+                                            </Link>
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            class="h-10 w-full justify-start gap-2 rounded-xl border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                            @click="
+                                                expenseToDelete = expense;
+                                                showDeleteDialog = true;
+                                            "
+                                        >
+                                            <Trash2 class="size-3.5" />
+                                            Delete
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
             </CardContent>
         </Card>

@@ -191,6 +191,46 @@ const formatCurrency = (value: number) =>
         currency: 'NGN',
     }).format(Number(value));
 
+const invoiceAccentClass = (invoice: Invoice) => {
+    if (invoice.status === 'paid') {
+        return 'from-emerald-500 via-emerald-400 to-teal-400';
+    }
+
+    if (invoice.status === 'partially_paid') {
+        return 'from-amber-500 via-orange-400 to-yellow-400';
+    }
+
+    if (invoice.status === 'overdue') {
+        return 'from-rose-500 via-red-400 to-orange-400';
+    }
+
+    if (invoice.status === 'void') {
+        return 'from-zinc-500 via-slate-400 to-gray-400';
+    }
+
+    return 'from-blue-500 via-sky-400 to-cyan-400';
+};
+
+const invoiceBalance = (invoice: Invoice) =>
+    Math.max(0, Number(invoice.total_amount) - Number(invoice.paid_amount));
+
+const invoicePaymentTone = (invoice: Invoice) => {
+    const balance = invoiceBalance(invoice);
+
+    if (balance <= 0) {
+        return 'text-emerald-700 bg-emerald-50 ring-emerald-100';
+    }
+
+    if (balance < Number(invoice.total_amount)) {
+        return 'text-amber-700 bg-amber-50 ring-amber-100';
+    }
+
+    return 'text-slate-700 bg-slate-50 ring-slate-200';
+};
+
+const invoiceBillingLabel = (invoice: Invoice) =>
+    invoice.booking ? `Booking ${invoice.booking.id}` : 'Standalone invoice';
+
 const submit = () => {
     form.transform((data) => ({
         ...data,
@@ -632,74 +672,226 @@ const applyBookingDetails = (bookingId: string) => {
             </Button>
         </div>
 
-        <div v-if="invoices.length > 0" class="space-y-3">
-            <Card v-for="invoice in invoices" :key="invoice.id">
-                <CardContent class="py-4">
+        <div v-if="invoices.length > 0" class="space-y-4">
+            <Card
+                v-for="invoice in invoices"
+                :key="invoice.id"
+                :accent-class="invoiceAccentClass(invoice)"
+            >
+                <CardContent class="p-0">
                     <div
-                        class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
+                        class="grid gap-0 lg:grid-cols-[minmax(0,1.35fr)_minmax(260px,0.9fr)_auto]"
                     >
-                        <div class="min-w-0 flex-1">
-                            <div class="flex items-center gap-3">
-                                <div>
-                                    <p class="font-semibold text-gray-900">
-                                        {{ invoice.invoice_number }}
-                                    </p>
-                                    <p class="text-sm text-gray-500">
+                        <div class="space-y-4 p-5 lg:p-6">
+                            <div
+                                class="flex flex-wrap items-start justify-between gap-3"
+                            >
+                                <div class="min-w-0 space-y-2">
+                                    <div
+                                        class="flex flex-wrap items-center gap-2"
+                                    >
+                                        <h3
+                                            class="text-lg font-semibold tracking-tight break-words text-gray-900"
+                                        >
+                                            {{ invoice.invoice_number }}
+                                        </h3>
+                                        <Badge
+                                            :class="statusColor(invoice.status)"
+                                        >
+                                            {{ statusLabel(invoice.status) }}
+                                        </Badge>
+                                    </div>
+                                    <p
+                                        class="text-sm break-words text-gray-500"
+                                    >
                                         {{ invoice.guest_name }} ·
                                         {{ invoice.guest_email }}
                                     </p>
                                 </div>
-                                <Badge :class="statusColor(invoice.status)">
-                                    {{ statusLabel(invoice.status) }}
-                                </Badge>
+
+                                <div
+                                    class="max-w-56 truncate rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200"
+                                >
+                                    {{ invoiceBillingLabel(invoice) }}
+                                </div>
+                            </div>
+
+                            <div
+                                class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+                            >
+                                <div
+                                    class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200"
+                                >
+                                    <p
+                                        class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                    >
+                                        Issue / Due
+                                    </p>
+                                    <p
+                                        class="mt-1 text-sm font-semibold break-words text-slate-900"
+                                    >
+                                        {{ invoice.issue_date }}
+                                    </p>
+                                    <p
+                                        class="text-xs break-words text-slate-500"
+                                    >
+                                        {{ invoice.due_date ?? 'No due date' }}
+                                    </p>
+                                </div>
+
+                                <div
+                                    class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200"
+                                >
+                                    <p
+                                        class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                    >
+                                        Total
+                                    </p>
+                                    <p
+                                        class="mt-1 text-sm font-semibold break-words text-slate-900"
+                                    >
+                                        {{
+                                            formatCurrency(invoice.total_amount)
+                                        }}
+                                    </p>
+                                    <p
+                                        class="text-xs break-words text-slate-500"
+                                    >
+                                        {{
+                                            invoice.booking
+                                                ? `Linked to booking ${invoice.booking.id}`
+                                                : 'Unlinked invoice'
+                                        }}
+                                    </p>
+                                </div>
+
+                                <div
+                                    class="rounded-2xl p-3 ring-1"
+                                    :class="invoicePaymentTone(invoice)"
+                                >
+                                    <p
+                                        class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                    >
+                                        Balance
+                                    </p>
+                                    <p class="mt-1 text-sm font-semibold">
+                                        {{
+                                            formatCurrency(
+                                                invoiceBalance(invoice),
+                                            )
+                                        }}
+                                    </p>
+                                    <p class="text-xs">
+                                        {{ statusLabel(invoice.status) }}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-wrap gap-2">
+                                <span
+                                    class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
+                                >
+                                    Paid
+                                    {{ formatCurrency(invoice.paid_amount) }}
+                                </span>
+                                <span
+                                    class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
+                                >
+                                    {{
+                                        invoice.booking
+                                            ? 'Booking-backed'
+                                            : 'Standalone billing'
+                                    }}
+                                </span>
+                                <span
+                                    v-if="invoice.notes"
+                                    class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
+                                >
+                                    Notes added
+                                </span>
                             </div>
                         </div>
 
-                        <div class="text-sm text-gray-600 md:text-right">
-                            <p>
-                                Total:
-                                <span class="font-semibold text-gray-900">{{
-                                    formatCurrency(invoice.total_amount)
-                                }}</span>
-                            </p>
-                            <p>
-                                Paid: {{ formatCurrency(invoice.paid_amount) }}
-                            </p>
-                            <p>
-                                Balance:
-                                {{
-                                    formatCurrency(
-                                        Number(invoice.total_amount) -
-                                            Number(invoice.paid_amount),
-                                    )
-                                }}
-                            </p>
+                        <div
+                            class="border-t border-slate-200 bg-slate-50/70 p-5 lg:border-t-0 lg:border-l lg:p-6"
+                        >
+                            <div class="space-y-3">
+                                <div
+                                    class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
+                                >
+                                    <p
+                                        class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                    >
+                                        Payment Progress
+                                    </p>
+                                    <p
+                                        class="mt-1 text-sm font-semibold text-slate-900"
+                                    >
+                                        {{
+                                            formatCurrency(invoice.paid_amount)
+                                        }}
+                                        paid
+                                    </p>
+                                    <p class="text-xs text-slate-500">
+                                        {{
+                                            formatCurrency(
+                                                invoiceBalance(invoice),
+                                            )
+                                        }}
+                                        remaining
+                                    </p>
+                                </div>
+
+                                <div
+                                    v-if="invoice.notes"
+                                    class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
+                                >
+                                    <p
+                                        class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                    >
+                                        Notes
+                                    </p>
+                                    <p
+                                        class="mt-1 line-clamp-3 text-sm text-slate-600"
+                                    >
+                                        {{ invoice.notes }}
+                                    </p>
+                                </div>
+                            </div>
                         </div>
 
-                        <div class="flex gap-2">
-                            <Link
-                                :href="edit([props.team.slug, invoice.id]).url"
-                            >
+                        <div
+                            class="flex items-stretch border-t border-slate-200 p-5 lg:border-t-0 lg:border-l lg:p-6"
+                        >
+                            <div class="flex w-full flex-col gap-2 sm:w-auto">
+                                <Link
+                                    :href="
+                                        edit([props.team.slug, invoice.id]).url
+                                    "
+                                    class="w-full"
+                                >
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        class="h-10 w-full justify-start gap-2 rounded-xl"
+                                    >
+                                        <Edit class="h-4 w-4" />
+                                        Edit
+                                    </Button>
+                                </Link>
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    class="gap-2"
+                                    class="h-10 w-full justify-start gap-2 rounded-xl border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                    @click="
+                                        invoiceToDelete = invoice;
+                                        showDeleteDialog = true;
+                                    "
                                 >
-                                    <Edit class="h-4 w-4" />
-                                    Edit
+                                    <Trash2 class="h-4 w-4" />
+                                    Delete
                                 </Button>
-                            </Link>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                class="text-red-600 hover:bg-red-50 hover:text-red-700"
-                                @click="
-                                    invoiceToDelete = invoice;
-                                    showDeleteDialog = true;
-                                "
-                            >
-                                <Trash2 class="h-4 w-4" />
-                            </Button>
+                            </div>
                         </div>
                     </div>
                 </CardContent>

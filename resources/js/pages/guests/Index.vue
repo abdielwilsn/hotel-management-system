@@ -47,7 +47,9 @@ type Props = {
         last_stay_from?: string | null;
         last_stay_to?: string | null;
         min_loyalty_points?: number | null;
+        max_loyalty_points?: number | null;
         has_email?: string | null;
+        has_phone?: string | null;
     };
     team: { id: number; slug: string; name: string };
 };
@@ -86,7 +88,13 @@ const filtersForm = useForm({
         props.filters.min_loyalty_points !== undefined
             ? String(props.filters.min_loyalty_points)
             : '',
+    max_loyalty_points:
+        props.filters.max_loyalty_points !== null &&
+        props.filters.max_loyalty_points !== undefined
+            ? String(props.filters.max_loyalty_points)
+            : '',
     has_email: props.filters.has_email ?? 'all',
+    has_phone: props.filters.has_phone ?? 'all',
 });
 
 const form = useForm({
@@ -111,7 +119,9 @@ const hasActiveFilters = computed(() =>
         filtersForm.last_stay_from ||
         filtersForm.last_stay_to ||
         filtersForm.min_loyalty_points ||
-        filtersForm.has_email !== 'all',
+        filtersForm.max_loyalty_points ||
+        filtersForm.has_email !== 'all' ||
+        filtersForm.has_phone !== 'all',
     ),
 );
 
@@ -129,9 +139,16 @@ const applyFilters = () => {
             min_loyalty_points: filtersForm.min_loyalty_points
                 ? Number(filtersForm.min_loyalty_points)
                 : undefined,
+            max_loyalty_points: filtersForm.max_loyalty_points
+                ? Number(filtersForm.max_loyalty_points)
+                : undefined,
             has_email:
                 filtersForm.has_email !== 'all'
                     ? filtersForm.has_email
+                    : undefined,
+            has_phone:
+                filtersForm.has_phone !== 'all'
+                    ? filtersForm.has_phone
                     : undefined,
         },
         {
@@ -148,7 +165,9 @@ const clearFilters = () => {
     filtersForm.last_stay_from = '';
     filtersForm.last_stay_to = '';
     filtersForm.min_loyalty_points = '';
+    filtersForm.max_loyalty_points = '';
     filtersForm.has_email = 'all';
+    filtersForm.has_phone = 'all';
     applyFilters();
 };
 
@@ -165,6 +184,44 @@ const tierColor = (tier: string) => {
 
 const labelize = (value: string) =>
     value.replace('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+
+const guestAccentClass = (guest: Guest) => {
+    if (guest.loyalty_tier === 'platinum') {
+        return 'from-cyan-500 via-sky-400 to-blue-400';
+    }
+
+    if (guest.loyalty_tier === 'gold') {
+        return 'from-amber-500 via-orange-400 to-yellow-400';
+    }
+
+    if (guest.loyalty_tier === 'silver') {
+        return 'from-slate-500 via-zinc-400 to-gray-400';
+    }
+
+    return 'from-violet-500 via-fuchsia-400 to-pink-400';
+};
+
+const guestPointsTone = (guest: Guest) => {
+    if (guest.loyalty_tier === 'platinum') {
+        return 'text-cyan-700 bg-cyan-50 ring-cyan-100';
+    }
+
+    if (guest.loyalty_tier === 'gold') {
+        return 'text-amber-700 bg-amber-50 ring-amber-100';
+    }
+
+    if (guest.loyalty_tier === 'silver') {
+        return 'text-slate-700 bg-slate-50 ring-slate-200';
+    }
+
+    return 'text-violet-700 bg-violet-50 ring-violet-100';
+};
+
+const guestContactLabel = (guest: Guest) =>
+    guest.email || guest.phone || 'No contact details';
+
+const guestStayLabel = (guest: Guest) =>
+    guest.last_stay_date ?? 'No recorded stay';
 
 const tierCounts = computed(() => {
     return props.guests.reduce(
@@ -305,6 +362,39 @@ const deleteGuest = () => {
                                 step="1"
                                 class="mt-1"
                             />
+                        </div>
+
+                        <div>
+                            <Label for="guest_filter_max_points"
+                                >Max Loyalty Points</Label
+                            >
+                            <Input
+                                id="guest_filter_max_points"
+                                v-model="filtersForm.max_loyalty_points"
+                                type="number"
+                                min="0"
+                                step="1"
+                                class="mt-1"
+                            />
+                        </div>
+
+                        <div>
+                            <Label for="guest_filter_has_phone"
+                                >Has Phone</Label
+                            >
+                            <Select v-model="filtersForm.has_phone">
+                                <SelectTrigger
+                                    id="guest_filter_has_phone"
+                                    class="mt-1"
+                                >
+                                    <SelectValue placeholder="Any" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Any</SelectItem>
+                                    <SelectItem value="yes">Yes</SelectItem>
+                                    <SelectItem value="no">No</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                     </div>
 
@@ -478,7 +568,7 @@ const deleteGuest = () => {
                         <textarea
                             id="preferences"
                             v-model="form.preferences"
-                            class="mt-1 flex min-h-[70px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+                            class="mt-1 flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
                         />
                         <InputError
                             :message="form.errors.preferences"
@@ -491,7 +581,7 @@ const deleteGuest = () => {
                         <textarea
                             id="notes"
                             v-model="form.notes"
-                            class="mt-1 flex min-h-[70px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+                            class="mt-1 flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
                         />
                         <InputError :message="form.errors.notes" class="mt-2" />
                     </div>
@@ -540,72 +630,246 @@ const deleteGuest = () => {
                     }}
                 </div>
 
-                <div v-else class="space-y-3">
-                    <div
+                <div v-else class="space-y-4">
+                    <Card
                         v-for="guest in guests"
                         :key="guest.id"
-                        class="rounded-lg border p-4"
+                        :accent-class="guestAccentClass(guest)"
                     >
-                        <div
-                            class="flex flex-wrap items-start justify-between gap-3"
-                        >
-                            <div>
-                                <p class="font-semibold">
-                                    {{ guest.full_name }}
-                                </p>
-                                <p class="text-sm text-muted-foreground">
-                                    {{ guest.email || 'No email' }}
-                                    <span v-if="guest.phone">
-                                        · {{ guest.phone }}</span
-                                    >
-                                </p>
-                                <p class="mt-1 text-xs text-muted-foreground">
-                                    Last stay:
-                                    {{ guest.last_stay_date || 'N/A' }}
-                                </p>
-                            </div>
-
-                            <div class="text-right">
-                                <Badge :class="tierColor(guest.loyalty_tier)">
-                                    <Star class="mr-1 size-3" />
-                                    {{ labelize(guest.loyalty_tier) }}
-                                </Badge>
-                                <p class="mt-1 text-xs text-muted-foreground">
-                                    {{ guest.loyalty_points }} pts
-                                </p>
-                            </div>
-                        </div>
-
-                        <div class="mt-3 flex justify-end gap-2">
-                            <Button variant="outline" size="sm" as-child>
-                                <Link
-                                    :href="edit([team.slug, guest.id]).url"
-                                    class="gap-1.5"
-                                >
-                                    <Edit class="size-3.5" />
-                                    Edit
-                                </Link>
-                            </Button>
-                            <Button
-                                variant="destructive"
-                                size="sm"
-                                class="gap-1.5"
-                                :disabled="!isAdmin"
-                                :title="
-                                    isAdmin
-                                        ? 'Delete guest'
-                                        : 'Admin only action'
-                                "
-                                @click="
-                                    guestToDelete = guest;
-                                    showDeleteDialog = true;
-                                "
+                        <CardContent class="p-0">
+                            <div
+                                class="grid gap-0 lg:grid-cols-[minmax(0,1.35fr)_minmax(260px,0.9fr)_auto]"
                             >
-                                <Trash2 class="size-3.5" />
-                                Delete
-                            </Button>
-                        </div>
-                    </div>
+                                <div class="space-y-4 p-5 lg:p-6">
+                                    <div
+                                        class="flex flex-wrap items-start justify-between gap-3"
+                                    >
+                                        <div class="min-w-0 space-y-2">
+                                            <div
+                                                class="flex flex-wrap items-center gap-2"
+                                            >
+                                                <h3
+                                                    class="text-lg font-semibold tracking-tight break-words text-gray-900"
+                                                >
+                                                    {{ guest.full_name }}
+                                                </h3>
+                                                <Badge
+                                                    :class="
+                                                        tierColor(
+                                                            guest.loyalty_tier,
+                                                        )
+                                                    "
+                                                >
+                                                    <Star class="mr-1 size-3" />
+                                                    {{
+                                                        labelize(
+                                                            guest.loyalty_tier,
+                                                        )
+                                                    }}
+                                                </Badge>
+                                            </div>
+                                            <p
+                                                class="text-sm break-words text-gray-500"
+                                            >
+                                                {{ guestContactLabel(guest) }}
+                                            </p>
+                                        </div>
+
+                                        <div
+                                            class="max-w-56 truncate rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200"
+                                        >
+                                            {{ guest.loyalty_points }} points
+                                        </div>
+                                    </div>
+
+                                    <div
+                                        class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+                                    >
+                                        <div
+                                            class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200"
+                                        >
+                                            <p
+                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                            >
+                                                Contact
+                                            </p>
+                                            <p
+                                                class="mt-1 text-sm font-semibold break-words text-slate-900"
+                                            >
+                                                {{ guest.email || 'No email' }}
+                                            </p>
+                                            <p
+                                                class="text-xs break-words text-slate-500"
+                                            >
+                                                {{ guest.phone || 'No phone' }}
+                                            </p>
+                                        </div>
+
+                                        <div
+                                            class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200"
+                                        >
+                                            <p
+                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                            >
+                                                Last Stay
+                                            </p>
+                                            <p
+                                                class="mt-1 text-sm font-semibold break-words text-slate-900"
+                                            >
+                                                {{ guestStayLabel(guest) }}
+                                            </p>
+                                            <p
+                                                class="text-xs break-words text-slate-500"
+                                            >
+                                                Loyalty tier:
+                                                {{
+                                                    labelize(guest.loyalty_tier)
+                                                }}
+                                            </p>
+                                        </div>
+
+                                        <div
+                                            class="rounded-2xl p-3 ring-1"
+                                            :class="guestPointsTone(guest)"
+                                        >
+                                            <p
+                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                            >
+                                                Loyalty
+                                            </p>
+                                            <p
+                                                class="mt-1 text-sm font-semibold"
+                                            >
+                                                {{ guest.loyalty_points }}
+                                                points
+                                            </p>
+                                            <p class="text-xs">
+                                                {{
+                                                    labelize(guest.loyalty_tier)
+                                                }}
+                                                member
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex flex-wrap gap-2">
+                                        <span
+                                            class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
+                                        >
+                                            {{
+                                                guest.email ||
+                                                'No email recorded'
+                                            }}
+                                        </span>
+                                        <span
+                                            class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
+                                        >
+                                            {{
+                                                guest.phone ||
+                                                'No phone recorded'
+                                            }}
+                                        </span>
+                                        <span
+                                            class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
+                                        >
+                                            {{
+                                                guest.last_stay_date ||
+                                                'No stay recorded'
+                                            }}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div
+                                    class="border-t border-slate-200 bg-slate-50/70 p-5 lg:border-t-0 lg:border-l lg:p-6"
+                                >
+                                    <div class="space-y-3">
+                                        <div
+                                            class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
+                                        >
+                                            <p
+                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                            >
+                                                Guest Record
+                                            </p>
+                                            <p
+                                                class="mt-1 text-sm font-semibold text-slate-900"
+                                            >
+                                                {{ guest.full_name }}
+                                            </p>
+                                            <p class="text-xs text-slate-500">
+                                                {{ guest.email || 'No email' }}
+                                            </p>
+                                        </div>
+
+                                        <div
+                                            class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
+                                        >
+                                            <p
+                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                            >
+                                                Recent Stay
+                                            </p>
+                                            <p
+                                                class="mt-1 text-sm font-semibold text-slate-900"
+                                            >
+                                                {{
+                                                    guest.last_stay_date ||
+                                                    'No recorded stay'
+                                                }}
+                                            </p>
+                                            <p class="text-xs text-slate-500">
+                                                {{ guest.phone || 'No phone' }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div
+                                    class="flex items-stretch border-t border-slate-200 p-5 lg:border-t-0 lg:border-l lg:p-6"
+                                >
+                                    <div
+                                        class="flex w-full flex-col gap-2 sm:w-auto"
+                                    >
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            as-child
+                                            class="h-10 w-full justify-start gap-2 rounded-xl"
+                                        >
+                                            <Link
+                                                :href="
+                                                    edit([team.slug, guest.id])
+                                                        .url
+                                                "
+                                            >
+                                                <Edit class="size-3.5" />
+                                                Edit
+                                            </Link>
+                                        </Button>
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            class="h-10 w-full justify-start gap-2 rounded-xl"
+                                            :disabled="!isAdmin"
+                                            :title="
+                                                isAdmin
+                                                    ? 'Delete guest'
+                                                    : 'Admin only action'
+                                            "
+                                            @click="
+                                                guestToDelete = guest;
+                                                showDeleteDialog = true;
+                                            "
+                                        >
+                                            <Trash2 class="size-3.5" />
+                                            Delete
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
             </CardContent>
         </Card>

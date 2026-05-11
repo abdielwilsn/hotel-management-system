@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useForm, Link, usePage } from '@inertiajs/vue3';
+import { useForm, Link, usePage, router } from '@inertiajs/vue3';
 import { Plus, Home, Trash2, Edit } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
@@ -40,6 +40,7 @@ type Room = {
         guest_name: string;
         check_in_date: string | null;
         check_out_date: string | null;
+        status: string;
     } | null;
 };
 
@@ -47,9 +48,19 @@ type Props = {
     rooms: Room[];
     roomTypes: string[];
     statuses: string[];
+    filters: {
+        search?: string | null;
+        room_type?: string | null;
+        status?: string | null;
+        floor?: number | null;
+        min_capacity?: number | null;
+        max_price?: number | null;
+    };
     occupancySummary: {
         occupied_rooms: number;
+        reserved_rooms: number;
         checked_in_bookings: number;
+        active_reservations: number;
     };
     team: {
         id: number;
@@ -78,6 +89,26 @@ const showCreateForm = ref(false);
 const showDeleteDialog = ref(false);
 const roomToDelete = ref<Room | null>(null);
 
+const filtersForm = useForm({
+    search: props.filters.search ?? '',
+    room_type: props.filters.room_type ?? 'all',
+    status: props.filters.status ?? 'all',
+    floor:
+        props.filters.floor !== null && props.filters.floor !== undefined
+            ? String(props.filters.floor)
+            : '',
+    min_capacity:
+        props.filters.min_capacity !== null &&
+        props.filters.min_capacity !== undefined
+            ? String(props.filters.min_capacity)
+            : '',
+    max_price:
+        props.filters.max_price !== null &&
+        props.filters.max_price !== undefined
+            ? String(props.filters.max_price)
+            : '',
+});
+
 const form = useForm({
     room_number: '',
     floor: '',
@@ -89,6 +120,25 @@ const form = useForm({
 });
 
 const deleteForm = useForm({});
+
+const filterStatuses = computed(() => [
+    'available',
+    'reserved',
+    'occupied',
+    'maintenance',
+    'cleaning',
+]);
+
+const hasActiveFilters = computed(() =>
+    Boolean(
+        filtersForm.search ||
+        filtersForm.room_type !== 'all' ||
+        filtersForm.status !== 'all' ||
+        filtersForm.floor ||
+        filtersForm.min_capacity ||
+        filtersForm.max_price,
+    ),
+);
 
 const roomTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
@@ -105,10 +155,51 @@ const statusColor = (status: string) => {
     const colors: Record<string, string> = {
         available: 'bg-green-100 text-green-800',
         occupied: 'bg-blue-100 text-blue-800',
+        reserved: 'bg-amber-100 text-amber-800',
         maintenance: 'bg-orange-100 text-orange-800',
         cleaning: 'bg-purple-100 text-purple-800',
     };
     return colors[status] || 'bg-gray-100 text-gray-800';
+};
+
+const statusLabel = (value: string) =>
+    value.replace('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+
+const applyFilters = () => {
+    router.get(
+        index(props.team.slug).url,
+        {
+            search: filtersForm.search || undefined,
+            room_type:
+                filtersForm.room_type !== 'all'
+                    ? filtersForm.room_type
+                    : undefined,
+            status:
+                filtersForm.status !== 'all' ? filtersForm.status : undefined,
+            floor: filtersForm.floor ? Number(filtersForm.floor) : undefined,
+            min_capacity: filtersForm.min_capacity
+                ? Number(filtersForm.min_capacity)
+                : undefined,
+            max_price: filtersForm.max_price
+                ? Number(filtersForm.max_price)
+                : undefined,
+        },
+        {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        },
+    );
+};
+
+const clearFilters = () => {
+    filtersForm.search = '';
+    filtersForm.room_type = 'all';
+    filtersForm.status = 'all';
+    filtersForm.floor = '';
+    filtersForm.min_capacity = '';
+    filtersForm.max_price = '';
+    applyFilters();
 };
 
 const formatDate = (date: string | null) => {
@@ -151,7 +242,128 @@ const deleteRoom = () => {
             description="Manage your hotel rooms and availability"
         />
 
-        <div class="grid gap-4 sm:grid-cols-2">
+        <Card>
+            <CardHeader>
+                <CardTitle>Filter Rooms</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <form @submit.prevent="applyFilters" class="space-y-4">
+                    <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
+                        <div class="md:col-span-2">
+                            <Label for="room_filter_search">Search</Label>
+                            <Input
+                                id="room_filter_search"
+                                v-model="filtersForm.search"
+                                class="mt-1"
+                                placeholder="Room number, description, guest"
+                            />
+                        </div>
+
+                        <div>
+                            <Label for="room_filter_type">Room Type</Label>
+                            <Select v-model="filtersForm.room_type">
+                                <SelectTrigger
+                                    id="room_filter_type"
+                                    class="mt-1"
+                                >
+                                    <SelectValue placeholder="Any type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all"
+                                        >Any type</SelectItem
+                                    >
+                                    <SelectItem
+                                        v-for="type in roomTypes"
+                                        :key="type"
+                                        :value="type"
+                                    >
+                                        {{ roomTypeLabel(type) }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div>
+                            <Label for="room_filter_status">Status</Label>
+                            <Select v-model="filtersForm.status">
+                                <SelectTrigger
+                                    id="room_filter_status"
+                                    class="mt-1"
+                                >
+                                    <SelectValue placeholder="Any status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all"
+                                        >Any status</SelectItem
+                                    >
+                                    <SelectItem
+                                        v-for="status in filterStatuses"
+                                        :key="status"
+                                        :value="status"
+                                    >
+                                        {{ statusLabel(status) }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div>
+                            <Label for="room_filter_floor">Floor</Label>
+                            <Input
+                                id="room_filter_floor"
+                                v-model="filtersForm.floor"
+                                type="number"
+                                min="1"
+                                step="1"
+                                class="mt-1"
+                            />
+                        </div>
+
+                        <div>
+                            <Label for="room_filter_min_capacity"
+                                >Min Capacity</Label
+                            >
+                            <Input
+                                id="room_filter_min_capacity"
+                                v-model="filtersForm.min_capacity"
+                                type="number"
+                                min="1"
+                                step="1"
+                                class="mt-1"
+                            />
+                        </div>
+
+                        <div>
+                            <Label for="room_filter_max_price"
+                                >Max Price / Night</Label
+                            >
+                            <Input
+                                id="room_filter_max_price"
+                                v-model="filtersForm.max_price"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                class="mt-1"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <Button type="submit">Apply Filters</Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            :disabled="!hasActiveFilters"
+                            @click="clearFilters"
+                        >
+                            Clear
+                        </Button>
+                    </div>
+                </form>
+            </CardContent>
+        </Card>
+
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
                 <CardHeader class="pb-2">
                     <CardTitle class="text-sm text-muted-foreground"
@@ -165,11 +377,31 @@ const deleteRoom = () => {
             <Card>
                 <CardHeader class="pb-2">
                     <CardTitle class="text-sm text-muted-foreground"
+                        >Reserved Rooms (Today)</CardTitle
+                    >
+                </CardHeader>
+                <CardContent class="text-3xl font-semibold">
+                    {{ occupancySummary.reserved_rooms }}
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader class="pb-2">
+                    <CardTitle class="text-sm text-muted-foreground"
                         >Checked-in Bookings</CardTitle
                     >
                 </CardHeader>
                 <CardContent class="text-3xl font-semibold">
                     {{ occupancySummary.checked_in_bookings }}
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader class="pb-2">
+                    <CardTitle class="text-sm text-muted-foreground"
+                        >Active Reservations (Today)</CardTitle
+                    >
+                </CardHeader>
+                <CardContent class="text-3xl font-semibold">
+                    {{ occupancySummary.active_reservations }}
                 </CardContent>
             </Card>
         </div>
@@ -284,7 +516,7 @@ const deleteRoom = () => {
                                         :key="s"
                                         :value="s"
                                     >
-                                        {{ roomTypeLabel(s) }}
+                                        {{ statusLabel(s) }}
                                     </SelectItem>
                                 </SelectContent>
                             </Select>
@@ -357,7 +589,7 @@ const deleteRoom = () => {
                         </div>
                     </div>
                 </CardHeader>
-                <CardContent class="flex-grow space-y-3 pb-3">
+                <CardContent class="grow space-y-3 pb-3">
                     <div class="flex gap-2">
                         <Badge :class="statusColor(room.status)">
                             {{ room.status }}
@@ -405,6 +637,35 @@ const deleteRoom = () => {
                                         room.active_booking.check_out_date,
                                     )
                                 }}
+                            </p>
+                        </template>
+                        <template
+                            v-if="
+                                room.status === 'reserved' &&
+                                room.active_booking
+                            "
+                        >
+                            <p>
+                                <strong>Reserved For:</strong>
+                                {{ room.active_booking.guest_name }}
+                            </p>
+                            <p>
+                                <strong>Reservation:</strong>
+                                {{
+                                    formatDate(
+                                        room.active_booking.check_in_date,
+                                    )
+                                }}
+                                -
+                                {{
+                                    formatDate(
+                                        room.active_booking.check_out_date,
+                                    )
+                                }}
+                            </p>
+                            <p>
+                                <strong>Booking Status:</strong>
+                                {{ room.active_booking.status }}
                             </p>
                         </template>
                     </div>

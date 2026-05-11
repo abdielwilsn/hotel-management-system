@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Booking;
+use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\Room;
 use App\Models\Team;
 use App\Models\User;
@@ -354,4 +356,260 @@ test('bookings index can be filtered by payment status and check-in date', funct
         ->assertInertia(fn (Assert $page) => $page
             ->where('bookings.0.id', $paidBooking->id)
             ->where('bookings', fn ($bookings) => count($bookings) === 1));
+});
+
+test('booking form only lists currently available rooms', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+
+    $availableRoom = Room::factory()->create([
+        'team_id' => $team->id,
+        'status' => 'available',
+        'room_number' => '101',
+    ]);
+
+    $reservedRoom = Room::factory()->create([
+        'team_id' => $team->id,
+        'status' => 'available',
+        'room_number' => '102',
+    ]);
+
+    $occupiedRoom = Room::factory()->create([
+        'team_id' => $team->id,
+        'status' => 'available',
+        'room_number' => '103',
+    ]);
+
+    Booking::factory()->create([
+        'team_id' => $team->id,
+        'room_id' => $reservedRoom->id,
+        'status' => 'confirmed',
+        'check_in_date' => now()->toDateString(),
+        'check_out_date' => now()->addDay()->toDateString(),
+    ]);
+
+    Booking::factory()->create([
+        'team_id' => $team->id,
+        'room_id' => $occupiedRoom->id,
+        'status' => 'checked_in',
+    ]);
+
+    $this->actingAs($user)
+        ->get("/{$team->slug}/bookings")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('rooms', fn ($rooms) => count($rooms) === 1)
+            ->where('rooms.0.id', $availableRoom->id)
+            ->where('rooms.0.room_number', '101'));
+});
+
+test('booking payments can be recorded as partial payments', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+    $room = Room::factory()->create(['team_id' => $team->id]);
+
+    $booking = Booking::factory()->create([
+        'team_id' => $team->id,
+        'room_id' => $room->id,
+        'total_amount' => 300,
+        'status' => 'confirmed',
+    ]);
+
+    $invoice = Invoice::factory()->create([
+        'team_id' => $team->id,
+        'booking_id' => $booking->id,
+        'total_amount' => 300,
+        'paid_amount' => 0,
+        'status' => 'issued',
+    ]);
+
+    $response = $this->actingAs($user)->post("/{$team->slug}/bookings/{$booking->id}/process-payment", [
+        'amount' => 120,
+        'method' => 'cash',
+        'payment_date' => '2026-07-10',
+        'status' => 'completed',
+    ]);
+
+    $response->assertRedirect("/{$team->slug}/bookings");
+    $this->assertDatabaseHas('payments', [
+        'team_id' => $team->id,
+        'invoice_id' => $invoice->id,
+        'amount' => 120,
+        'status' => 'completed',
+    ]);
+
+    expect((float) $invoice->fresh()->paid_amount)->toBe(120.0);
+    expect($invoice->fresh()->status)->toBe('partially_paid');
+});
+
+test('checking out a booking can settle the remaining balance and release the room', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+    $room = Room::factory()->create(['team_id' => $team->id, 'status' => 'occupied']);
+
+    $booking = Booking::factory()->create([
+        'team_id' => $team->id,
+        'room_id' => $room->id,
+        'total_amount' => 400,
+        'status' => 'checked_in',
+    ]);
+
+    $invoice = Invoice::factory()->create([
+        'team_id' => $team->id,
+        'booking_id' => $booking->id,
+        'total_amount' => 400,
+        'paid_amount' => 150,
+        'status' => 'partially_paid',
+    ]);
+
+    Payment::factory()->create([
+        'team_id' => $team->id,
+        'invoice_id' => $invoice->id,
+        'amount' => 150,
+        'status' => 'completed',
+    ]);
+
+    $response = $this->actingAs($user)->post("/{$team->slug}/bookings/{$booking->id}/checkout", [
+        'settlement_amount' => 250,
+        'settlement_method' => 'card',
+        'settlement_payment_date' => '2026-07-11',
+        'settlement_reference' => 'CHK-250',
+    ]);
+
+    $response->assertRedirect("/{$team->slug}/bookings");
+    expect($booking->fresh()->status)->toBe('checked_out');
+    expect((float) $invoice->fresh()->paid_amount)->toBe(400.0);
+    expect($invoice->fresh()->status)->toBe('paid');
+
+    $this->assertDatabaseHas('rooms', [
+        'id' => $room->id,
+        'status' => 'available',
+    ]);
+});
+
+test('checkout requires the full remaining balance when money is still owed', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+    $room = Room::factory()->create(['team_id' => $team->id, 'status' => 'occupied']);
+
+    $booking = Booking::factory()->create([
+        'team_id' => $team->id,
+        'room_id' => $room->id,
+        'total_amount' => 400,
+        'status' => 'checked_in',
+    ]);
+
+    Invoice::factory()->create([
+        'team_id' => $team->id,
+        'booking_id' => $booking->id,
+        'total_amount' => 400,
+        'paid_amount' => 150,
+        'status' => 'partially_paid',
+    ]);
+
+    $response = $this->actingAs($user)->post("/{$team->slug}/bookings/{$booking->id}/checkout", [
+        'settlement_amount' => 200,
+        'settlement_method' => 'cash',
+        'settlement_payment_date' => '2026-07-11',
+    ]);
+
+    $response->assertSessionHasErrors('settlement_amount');
+});
+
+test('extending a stay updates the booking total and invoice balance', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+    $room = Room::factory()->create([
+        'team_id' => $team->id,
+        'price_per_night' => 100,
+    ]);
+
+    $booking = Booking::factory()->create([
+        'team_id' => $team->id,
+        'room_id' => $room->id,
+        'check_in_date' => '2026-08-01',
+        'check_out_date' => '2026-08-03',
+        'price_per_night' => 100,
+        'total_amount' => 200,
+        'status' => 'checked_in',
+        'notes' => 'Initial stay',
+    ]);
+
+    $invoice = Invoice::factory()->create([
+        'team_id' => $team->id,
+        'booking_id' => $booking->id,
+        'total_amount' => 200,
+        'paid_amount' => 100,
+        'status' => 'partially_paid',
+    ]);
+
+    Payment::factory()->create([
+        'team_id' => $team->id,
+        'invoice_id' => $invoice->id,
+        'amount' => 100,
+        'status' => 'completed',
+    ]);
+
+    $response = $this->actingAs($user)->post("/{$team->slug}/bookings/{$booking->id}/extend-stay", [
+        'check_out_date' => '2026-08-05',
+        'notes' => 'Guest requested two extra nights',
+    ]);
+
+    $response->assertRedirect("/{$team->slug}/bookings");
+
+    expect($booking->fresh()->check_out_date->format('Y-m-d'))->toBe('2026-08-05');
+    expect((float) $booking->fresh()->total_amount)->toBe(400.0);
+    expect((float) $invoice->fresh()->total_amount)->toBe(400.0);
+    expect((float) $invoice->fresh()->paid_amount)->toBe(100.0);
+    expect($invoice->fresh()->status)->toBe('partially_paid');
+    expect($booking->fresh()->notes)->toContain('Guest requested two extra nights');
+});
+
+test('bookings index includes folio payment lines and extension history', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+    $room = Room::factory()->create(['team_id' => $team->id]);
+
+    $booking = Booking::factory()->create([
+        'team_id' => $team->id,
+        'room_id' => $room->id,
+        'status' => 'checked_in',
+        'notes' => "Guest requested a baby cot\nExtension: Added one extra night",
+    ]);
+
+    $invoice = Invoice::factory()->create([
+        'team_id' => $team->id,
+        'booking_id' => $booking->id,
+        'invoice_number' => 'INV-FOLIO-1001',
+        'issue_date' => '2026-09-01',
+        'due_date' => '2026-09-03',
+        'total_amount' => 250,
+        'paid_amount' => 125,
+        'status' => 'partially_paid',
+    ]);
+
+    Payment::factory()->create([
+        'team_id' => $team->id,
+        'invoice_id' => $invoice->id,
+        'payment_number' => 'PAY-FOLIO-1001',
+        'payment_date' => '2026-09-01',
+        'amount' => 125,
+        'method' => 'cash',
+        'status' => 'completed',
+    ]);
+
+    $this->actingAs($user)
+        ->get("/{$team->slug}/bookings")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('bookings.0.id', $booking->id)
+            ->where('bookings.0.invoice.invoice_number', 'INV-FOLIO-1001')
+            ->where('bookings.0.invoice.payments.0.payment_number', 'PAY-FOLIO-1001')
+            ->where('bookings.0.extension_history.0.label', 'Added one extra night'));
 });

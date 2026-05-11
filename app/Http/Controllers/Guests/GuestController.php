@@ -26,7 +26,9 @@ class GuestController extends Controller
             'last_stay_from' => ['nullable', 'date'],
             'last_stay_to' => ['nullable', 'date'],
             'min_loyalty_points' => ['nullable', 'integer', 'min:0'],
+            'max_loyalty_points' => ['nullable', 'integer', 'min:0'],
             'has_email' => ['nullable', 'string', 'in:yes,no'],
+            'has_phone' => ['nullable', 'string', 'in:yes,no'],
         ]);
 
         $guests = $current_team->guests()
@@ -51,6 +53,9 @@ class GuestController extends Controller
             ->when($filters['min_loyalty_points'] ?? null, function (Builder $query, int $minimumPoints): void {
                 $query->where('loyalty_points', '>=', $minimumPoints);
             })
+            ->when($filters['max_loyalty_points'] ?? null, function (Builder $query, int $maximumPoints): void {
+                $query->where('loyalty_points', '<=', $maximumPoints);
+            })
             ->when($filters['has_email'] ?? null, function (Builder $query, string $hasEmail): void {
                 if ($hasEmail === 'yes') {
                     $query->whereNotNull('email')->where('email', '!=', '');
@@ -60,6 +65,17 @@ class GuestController extends Controller
 
                 $query->where(function (Builder $subQuery): void {
                     $subQuery->whereNull('email')->orWhere('email', '');
+                });
+            })
+            ->when($filters['has_phone'] ?? null, function (Builder $query, string $hasPhone): void {
+                if ($hasPhone === 'yes') {
+                    $query->whereNotNull('phone')->where('phone', '!=', '');
+
+                    return;
+                }
+
+                $query->where(function (Builder $subQuery): void {
+                    $subQuery->whereNull('phone')->orWhere('phone', '');
                 });
             })
             ->orderBy('last_name')
@@ -75,7 +91,9 @@ class GuestController extends Controller
                 'last_stay_from',
                 'last_stay_to',
                 'min_loyalty_points',
+                'max_loyalty_points',
                 'has_email',
+                'has_phone',
             ]),
             'team' => $current_team->only('id', 'slug', 'name'),
         ]);

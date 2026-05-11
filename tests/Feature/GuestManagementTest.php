@@ -228,3 +228,36 @@ test('guests index can be filtered by loyalty tier and search', function () {
             ->where('guests.0.id', $matchingGuest->id)
             ->where('guests', fn ($guests) => count($guests) === 1));
 });
+
+test('guests index can be filtered by phone availability and max loyalty points', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+
+    $matchingGuest = Guest::factory()->create([
+        'team_id' => $team->id,
+        'phone' => '+1 555-1000',
+        'loyalty_points' => 300,
+    ]);
+
+    Guest::factory()->create([
+        'team_id' => $team->id,
+        'phone' => null,
+        'loyalty_points' => 150,
+    ]);
+
+    Guest::factory()->create([
+        'team_id' => $team->id,
+        'phone' => '+1 555-2000',
+        'loyalty_points' => 1200,
+    ]);
+
+    $this->actingAs($user)
+        ->get("/{$team->slug}/guests?has_phone=yes&max_loyalty_points=400")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('guests', fn ($guests) => count($guests) === 1)
+            ->where('guests.0.id', $matchingGuest->id)
+            ->where('filters.has_phone', 'yes')
+            ->where('filters.max_loyalty_points', '400'));
+});
