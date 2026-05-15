@@ -39,37 +39,37 @@ defineOptions({
     }),
 });
 
-const metricCards = [
-    {
-        title: 'New Bookings',
-        value: 845,
-        delta: '+8.6%',
-        hint: 'vs last week',
-        icon: CalendarClock,
-    },
-    {
-        title: 'Current Check-ins',
-        value: 221,
-        delta: '+4.2%',
-        hint: 'live occupancy flow',
-        icon: Users,
-    },
-    {
-        title: 'Check-outs Today',
-        value: 150,
-        delta: '-2.1%',
-        hint: 'expected departures',
-        icon: DoorOpen,
-    },
-    {
-        title: 'Revenue (MTD)',
-        value: 35034000,
-        delta: '+12.4%',
-        hint: 'performance trend',
-        icon: CircleDollarSign,
-        currency: true,
-    },
-];
+type MetricCard = {
+    title: string;
+    value: number;
+    delta: string;
+    hint: string;
+    currency?: boolean;
+};
+
+type Props = {
+    metricCards: MetricCard[];
+};
+
+const props = defineProps<Props>();
+
+const metricCards = props.metricCards;
+
+const metricIcon = (title: string) => {
+    if (title === 'New Bookings') {
+        return CalendarClock;
+    }
+
+    if (title === 'Current Check-ins') {
+        return Users;
+    }
+
+    if (title === 'Check-outs Today') {
+        return DoorOpen;
+    }
+
+    return CircleDollarSign;
+};
 
 const quickActions = [
     {
@@ -372,8 +372,8 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
                         class="flex items-center justify-between text-sm font-semibold text-slate-500"
                     >
                         {{ metric.title }}
-                        <component
-                            :is="metric.icon"
+                            <component
+                                :is="metricIcon(metric.title)"
                             class="size-4 text-(--primary-brand)"
                         />
                     </CardTitle>

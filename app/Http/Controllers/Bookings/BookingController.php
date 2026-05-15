@@ -159,6 +159,55 @@ class BookingController extends Controller
             ->get(['id', 'room_number', 'room_type', 'capacity', 'price_per_night']);
         $statuses = ['pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled'];
 
+        // Dashboard data
+        $now = Carbon::now();
+        $upcomingCheckIns = $current_team->bookings()
+            ->with('room:id,room_number')
+            ->where('status', '!=', 'cancelled')
+            ->whereIn('status', ['pending', 'confirmed'])
+            ->whereDate('check_in_date', '=', $today)
+            ->orderBy('check_in_date')
+            ->limit(5)
+            ->get(['id', 'room_id', 'guest_name', 'check_in_date']);
+
+        $pendingCheckOuts = $current_team->bookings()
+            ->with('room:id,room_number')
+            ->where('status', 'checked_in')
+            ->whereDate('check_out_date', '=', $today)
+            ->orderBy('check_out_date')
+            ->limit(5)
+            ->get(['id', 'room_id', 'guest_name', 'check_out_date']);
+
+        $pendingPayments = $current_team->bookings()
+            ->with(['invoice' => function ($query): void {
+                $query->select('invoices.id', 'invoices.booking_id', 'invoices.total_amount', 'invoices.paid_amount', 'invoices.status');
+            }])
+            ->where('status', '!=', 'cancelled')
+            ->whereHas('invoice', function (Builder $query): void {
+                $query->where(function (Builder $subQuery): void {
+                    $subQuery
+                        ->where('paid_amount', '<=', 0)
+                        ->orWhereColumn('paid_amount', '<', 'total_amount');
+                });
+            })
+            ->limit(5)
+            ->get(['id', 'guest_name', 'check_in_date']);
+
+        // Calendar data for next 14 days
+        $calendarStart = Carbon::today();
+        $calendarEnd = $calendarStart->clone()->addDays(13);
+
+        $calendarBookings = $current_team->bookings()
+            ->with('room:id,room_number,room_type')
+            ->where('status', '!=', 'cancelled')
+            ->where(function (Builder $query) use ($calendarStart, $calendarEnd): void {
+                $query
+                    ->whereDate('check_in_date', '<=', $calendarEnd)
+                    ->whereDate('check_out_date', '>=', $calendarStart);
+            })
+            ->orderBy('check_in_date')
+            ->get(['id', 'room_id', 'guest_name', 'check_in_date', 'check_out_date', 'status']);
+
         return Inertia::render('bookings/Index', [
             'bookings' => $bookings,
             'rooms' => $rooms,
@@ -174,6 +223,15 @@ class BookingController extends Controller
                 'check_out_from',
                 'check_out_to',
             ]),
+            'dashboard' => [
+                'upcomingCheckIns' => $upcomingCheckIns,
+                'pendingCheckOuts' => $pendingCheckOuts,
+                'pendingPayments' => $pendingPayments,
+                'calendarBookings' => $calendarBookings,
+                'today' => $today,
+                'calendarStart' => $calendarStart->toDateString(),
+                'calendarEnd' => $calendarEnd->toDateString(),
+            ],
             'team' => $current_team->only('id', 'slug', 'name'),
         ]);
     }
@@ -246,7 +304,7 @@ class BookingController extends Controller
 
         Gate::authorize('create', [Payment::class, $current_team]);
 
-        DB::transaction(function () use ($booking, $current_team, $request): void {
+        $payment = DB::transaction(function () use ($booking, $current_team, $request): ?Payment {
             $invoice = $this->syncBookingInvoice($current_team, $booking);
 
             $balance = round((float) $invoice->total_amount - (float) $invoice->paid_amount, 2);
@@ -257,10 +315,10 @@ class BookingController extends Controller
             }
 
             if ($amount <= 0) {
-                return;
+                return null;
             }
 
-            $this->recordPayment($current_team, $invoice, [
+            $payment = $this->recordPayment($current_team, $invoice, [
                 'amount' => $amount,
                 'method' => (string) $request->validated('method'),
                 'payment_date' => (string) $request->validated('payment_date'),
@@ -272,7 +330,14 @@ class BookingController extends Controller
             if ($booking->status === 'pending') {
                 $booking->update(['status' => 'confirmed']);
             }
+
+            return $payment;
         });
+
+        if ($payment) {
+            return redirect()->route('payments.receipt', [$current_team->slug, $payment->id])
+                ->with('message', "Payment recorded for {$booking->guest_name}.");
+        }
 
         return redirect()->route('bookings.index', $current_team->slug)
             ->with('message', "Payment recorded for {$booking->guest_name}.");
@@ -455,9 +520,9 @@ class BookingController extends Controller
     /**
      * @param  array{amount: float, method: string, payment_date: string, status: string, reference: mixed, notes: mixed}  $payload
      */
-    private function recordPayment(Team $team, Invoice $invoice, array $payload): void
+    private function recordPayment(Team $team, Invoice $invoice, array $payload): Payment
     {
-        $team->payments()->create([
+        $payment = $team->payments()->create([
             'invoice_id' => $invoice->id,
             'payment_number' => $this->generatePaymentNumber($team),
             'payment_date' => $payload['payment_date'],
@@ -469,6 +534,8 @@ class BookingController extends Controller
         ]);
 
         $this->refreshInvoicePaidAmount($invoice->fresh());
+
+        return $payment;
     }
 
     private function refreshInvoicePaidAmount(Invoice $invoice): void

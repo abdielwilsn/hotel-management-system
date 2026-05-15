@@ -19,6 +19,26 @@ test('team members can view the payments index page', function () {
     $response->assertStatus(200);
 });
 
+test('team members can view a payment receipt page', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+
+    $invoice = Invoice::factory()->create(['team_id' => $team->id]);
+    $payment = Payment::factory()->create([
+        'team_id' => $team->id,
+        'invoice_id' => $invoice->id,
+    ]);
+
+    $this->actingAs($user)
+        ->get("/{$team->slug}/payments/{$payment->id}/receipt")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('payments/Receipt')
+            ->where('payment.id', $payment->id)
+            ->where('team.slug', $team->slug));
+});
+
 test('admins can create completed payments and invoice paid amount is updated', function () {
     $team = Team::factory()->create();
     $user = User::factory()->create();

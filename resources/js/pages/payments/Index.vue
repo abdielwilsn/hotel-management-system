@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useForm, Link, usePage, router } from '@inertiajs/vue3';
-import { CreditCard, Edit, Plus, Trash2 } from 'lucide-vue-next';
+import { CreditCard, Edit, Plus, Printer, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -23,7 +23,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { destroy, edit, index, store } from '@/routes/payments';
+import { destroy, edit, index, receipt, store } from '@/routes/payments';
 import type { Team } from '@/types';
 
 type InvoiceOption = {
@@ -899,6 +899,26 @@ const deletePayment = () => {
                                     <div
                                         class="flex w-full flex-col gap-2 sm:w-auto"
                                     >
+                                        <Button
+                                            as-child
+                                            variant="outline"
+                                            size="sm"
+                                            class="h-10 w-full justify-start gap-2 rounded-xl"
+                                        >
+                                            <Link
+                                                :href="
+                                                    receipt([
+                                                        team.slug,
+                                                        payment.id,
+                                                    ]).url
+                                                "
+                                                target="_blank"
+                                                rel="noopener"
+                                            >
+                                                <Printer class="size-3.5" />
+                                                Print
+                                            </Link>
+                                        </Button>
                                         <Button
                                             v-if="isAdmin"
                                             as-child

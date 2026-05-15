@@ -432,7 +432,15 @@ test('booking payments can be recorded as partial payments', function () {
         'status' => 'completed',
     ]);
 
-    $response->assertRedirect("/{$team->slug}/bookings");
+    $payment = Payment::query()
+        ->where('team_id', $team->id)
+        ->where('invoice_id', $invoice->id)
+        ->where('amount', 120)
+        ->first();
+
+    expect($payment)->not->toBeNull();
+
+    $response->assertRedirect("/{$team->slug}/payments/{$payment->id}/receipt");
     $this->assertDatabaseHas('payments', [
         'team_id' => $team->id,
         'invoice_id' => $invoice->id,

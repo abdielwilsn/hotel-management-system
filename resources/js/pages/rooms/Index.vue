@@ -1,12 +1,19 @@
 <script setup lang="ts">
-import { useForm, Link, usePage, router } from '@inertiajs/vue3';
-import { Plus, Home, Trash2, Edit } from 'lucide-vue-next';
+import { useForm, Link, router } from '@inertiajs/vue3';
+import { Plus, Home, Trash2, Edit, CalendarPlus } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -16,13 +23,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
+import { store as storeBooking } from '@/routes/bookings';
 import { index, store, edit, destroy } from '@/routes/rooms';
 import type { Team } from '@/types';
 
@@ -71,9 +72,6 @@ type Props = {
 
 const props = defineProps<Props>();
 
-const page = usePage();
-const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
-
 defineOptions({
     layout: (props: { currentTeam?: Team | null }) => ({
         breadcrumbs: [
@@ -87,7 +85,9 @@ defineOptions({
 
 const showCreateForm = ref(false);
 const showDeleteDialog = ref(false);
+const showBookRoomDialog = ref(false);
 const roomToDelete = ref<Room | null>(null);
+const roomToBook = ref<Room | null>(null);
 
 const filtersForm = useForm({
     search: props.filters.search ?? '',
@@ -120,6 +120,23 @@ const form = useForm({
 });
 
 const deleteForm = useForm({});
+const bookingForm = useForm({
+    room_id: '',
+    guest_name: '',
+    guest_email: '',
+    guest_phone: '',
+    number_of_guests: '1',
+    check_in_date: new Date().toISOString().split('T')[0],
+    check_out_date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+    status: 'pending',
+    notes: '',
+    process_payment: false,
+    payment_amount: '',
+    payment_method: 'cash',
+    payment_date: new Date().toISOString().split('T')[0],
+    payment_reference: '',
+    payment_notes: '',
+});
 
 const filterStatuses = computed(() => [
     'available',
@@ -148,6 +165,7 @@ const roomTypeLabel = (type: string) => {
         deluxe: 'Deluxe',
         penthouse: 'Penthouse',
     };
+
     return labels[type] || type;
 };
 
@@ -159,6 +177,7 @@ const statusColor = (status: string) => {
         maintenance: 'bg-orange-100 text-orange-800',
         cleaning: 'bg-purple-100 text-purple-800',
     };
+
     return colors[status] || 'bg-gray-100 text-gray-800';
 };
 
@@ -214,6 +233,29 @@ const formatDate = (date: string | null) => {
     });
 };
 
+const openBookRoomDialog = (room: Room) => {
+    roomToBook.value = room;
+    bookingForm.reset();
+    bookingForm.room_id = String(room.id);
+    bookingForm.guest_name = '';
+    bookingForm.guest_email = '';
+    bookingForm.guest_phone = '';
+    bookingForm.number_of_guests = '1';
+    bookingForm.check_in_date = new Date().toISOString().split('T')[0];
+    bookingForm.check_out_date = new Date(Date.now() + 86400000)
+        .toISOString()
+        .split('T')[0];
+    bookingForm.status = 'pending';
+    bookingForm.notes = '';
+    bookingForm.process_payment = false;
+    bookingForm.payment_amount = '';
+    bookingForm.payment_method = 'cash';
+    bookingForm.payment_date = new Date().toISOString().split('T')[0];
+    bookingForm.payment_reference = '';
+    bookingForm.payment_notes = '';
+    showBookRoomDialog.value = true;
+};
+
 const submit = () => {
     form.post(store(props.team.slug).url, {
         onSuccess: () => {
@@ -224,11 +266,23 @@ const submit = () => {
 };
 
 const deleteRoom = () => {
-    if (!roomToDelete.value) return;
+    if (!roomToDelete.value) {
+        return;
+    }
+
     deleteForm.delete(destroy([props.team.slug, roomToDelete.value.id]).url, {
         onSuccess: () => {
             showDeleteDialog.value = false;
             roomToDelete.value = null;
+        },
+    });
+};
+
+const createBookingForRoom = () => {
+    bookingForm.post(storeBooking(props.team.slug).url, {
+        onSuccess: () => {
+            showBookRoomDialog.value = false;
+            roomToBook.value = null;
         },
     });
 };
@@ -546,7 +600,7 @@ const deleteRoom = () => {
                         <Button
                             type="submit"
                             :disabled="form.processing"
-                            class="bg-black hover:bg-hotel-primary/90"
+                            class="hover:bg-hotel-primary/90 bg-black"
                         >
                             {{
                                 form.processing ? 'Creating...' : 'Create Room'
@@ -670,6 +724,15 @@ const deleteRoom = () => {
                         </template>
                     </div>
                     <div class="flex gap-2 pt-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            class="flex-1 gap-2"
+                            @click="openBookRoomDialog(room)"
+                        >
+                            <CalendarPlus class="h-4 w-4" />
+                            Book Room
+                        </Button>
                         <Link
                             :href="edit([props.team.slug, room.id]).url"
                             class="flex-1"
@@ -742,6 +805,181 @@ const deleteRoom = () => {
                         {{ deleteForm.processing ? 'Deleting...' : 'Delete' }}
                     </Button>
                 </div>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog
+            :open="showBookRoomDialog"
+            @update:open="showBookRoomDialog = $event"
+        >
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Create Booking</DialogTitle>
+                    <DialogDescription>
+                        Create a booking for
+                        <strong>Room {{ roomToBook?.room_number }}</strong
+                        >.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <form @submit.prevent="createBookingForRoom" class="space-y-3">
+                    <div>
+                        <Label for="room_booking_guest_name"
+                            >Guest Name *</Label
+                        >
+                        <Input
+                            id="room_booking_guest_name"
+                            v-model="bookingForm.guest_name"
+                            type="text"
+                        />
+                        <InputError
+                            :message="bookingForm.errors.guest_name"
+                            class="mt-2"
+                        />
+                    </div>
+
+                    <div>
+                        <Label for="room_booking_guest_email"
+                            >Guest Email *</Label
+                        >
+                        <Input
+                            id="room_booking_guest_email"
+                            v-model="bookingForm.guest_email"
+                            type="email"
+                        />
+                        <InputError
+                            :message="bookingForm.errors.guest_email"
+                            class="mt-2"
+                        />
+                    </div>
+
+                    <div>
+                        <Label for="room_booking_guest_phone"
+                            >Guest Phone</Label
+                        >
+                        <Input
+                            id="room_booking_guest_phone"
+                            v-model="bookingForm.guest_phone"
+                            type="text"
+                        />
+                        <InputError
+                            :message="bookingForm.errors.guest_phone"
+                            class="mt-2"
+                        />
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                            <Label for="room_booking_guests">Guests *</Label>
+                            <Input
+                                id="room_booking_guests"
+                                v-model="bookingForm.number_of_guests"
+                                type="number"
+                                min="1"
+                                step="1"
+                            />
+                            <InputError
+                                :message="bookingForm.errors.number_of_guests"
+                                class="mt-2"
+                            />
+                        </div>
+                        <div>
+                            <Label for="room_booking_status">Status *</Label>
+                            <Select v-model="bookingForm.status">
+                                <SelectTrigger
+                                    id="room_booking_status"
+                                    class="mt-1"
+                                >
+                                    <SelectValue placeholder="Select status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="pending"
+                                        >Pending</SelectItem
+                                    >
+                                    <SelectItem value="confirmed"
+                                        >Confirmed</SelectItem
+                                    >
+                                    <SelectItem value="checked_in"
+                                        >Checked In</SelectItem
+                                    >
+                                </SelectContent>
+                            </Select>
+                            <InputError
+                                :message="bookingForm.errors.status"
+                                class="mt-2"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                            <Label for="room_booking_check_in"
+                                >Check-in *</Label
+                            >
+                            <Input
+                                id="room_booking_check_in"
+                                v-model="bookingForm.check_in_date"
+                                type="date"
+                            />
+                            <InputError
+                                :message="bookingForm.errors.check_in_date"
+                                class="mt-2"
+                            />
+                        </div>
+                        <div>
+                            <Label for="room_booking_check_out"
+                                >Check-out *</Label
+                            >
+                            <Input
+                                id="room_booking_check_out"
+                                v-model="bookingForm.check_out_date"
+                                type="date"
+                            />
+                            <InputError
+                                :message="bookingForm.errors.check_out_date"
+                                class="mt-2"
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <Label for="room_booking_notes">Notes</Label>
+                        <Input
+                            id="room_booking_notes"
+                            v-model="bookingForm.notes"
+                            type="text"
+                            placeholder="Optional booking notes"
+                        />
+                        <InputError
+                            :message="bookingForm.errors.notes"
+                            class="mt-2"
+                        />
+                        <InputError
+                            :message="bookingForm.errors.room_id"
+                            class="mt-2"
+                        />
+                    </div>
+
+                    <div class="flex justify-end gap-3 pt-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="showBookRoomDialog = false"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="submit"
+                            :disabled="bookingForm.processing"
+                        >
+                            {{
+                                bookingForm.processing
+                                    ? 'Creating...'
+                                    : 'Create Booking'
+                            }}
+                        </Button>
+                    </div>
+                </form>
             </DialogContent>
         </Dialog>
     </div>

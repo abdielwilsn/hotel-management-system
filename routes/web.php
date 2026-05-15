@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Bookings\BookingController;
+use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Departments\DepartmentController;
 use App\Http\Controllers\Expenses\ExpenseController;
 use App\Http\Controllers\Forecasts\ForecastController;
@@ -23,7 +24,7 @@ Route::inertia('/', 'Welcome', [
 Route::prefix('{current_team}')
     ->middleware(['auth', 'verified', EnsureTeamMembership::class])
     ->group(function () {
-        Route::inertia('dashboard', 'Dashboard')->name('dashboard');
+        Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
         Route::get('departments', [DepartmentController::class, 'index'])->name('departments.index');
 
@@ -53,6 +54,7 @@ Route::prefix('{current_team}')
         Route::patch('bookings/{booking}', [BookingController::class, 'update'])->name('bookings.update');
 
         Route::post('payments', [PaymentController::class, 'store'])->name('payments.store');
+        Route::get('payments/{payment}/receipt', [PaymentController::class, 'receipt'])->name('payments.receipt');
 
         Route::post('guests', [GuestController::class, 'store'])->name('guests.store');
         Route::get('guests/{guest}/edit', [GuestController::class, 'edit'])->name('guests.edit');

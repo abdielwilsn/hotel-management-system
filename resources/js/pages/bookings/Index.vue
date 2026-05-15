@@ -7,10 +7,15 @@ import {
     Plus,
     Trash2,
     Edit,
+    LayoutList,
+    Calendar,
 } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
+import BookingCalendar from '@/components/BookingCalendar.vue';
+import BookingWizard from '@/components/BookingWizard.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import OperationsDashboard from '@/components/OperationsDashboard.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,7 +42,6 @@ import {
     extendStay,
     index,
     processPayment as processBookingPayment,
-    store,
 } from '@/routes/bookings';
 import type { Team } from '@/types';
 
@@ -100,6 +104,46 @@ type Props = {
         check_out_from?: string | null;
         check_out_to?: string | null;
     };
+    dashboard: {
+        upcomingCheckIns: Array<{
+            id: number;
+            room_id?: number;
+            guest_name: string;
+            check_in_date?: string;
+            room?: { id: number; room_number: string };
+        }>;
+        pendingCheckOuts: Array<{
+            id: number;
+            room_id?: number;
+            guest_name: string;
+            check_out_date?: string;
+            room?: { id: number; room_number: string };
+        }>;
+        pendingPayments: Array<{
+            id: number;
+            guest_name: string;
+            check_in_date: string;
+            invoice?: {
+                id: number;
+                booking_id: number;
+                total_amount: number;
+                paid_amount: number;
+                status: string;
+            };
+        }>;
+        calendarBookings: Array<{
+            id: number;
+            room_id: number;
+            guest_name: string;
+            check_in_date: string;
+            check_out_date: string;
+            status: string;
+            room?: { id: number; room_number: string; room_type: string };
+        }>;
+        today: string;
+        calendarStart: string;
+        calendarEnd: string;
+    };
     team: { id: number; slug: string; name: string };
 };
 
@@ -129,6 +173,8 @@ const showProcessPaymentDialog = ref(false);
 const showCheckoutDialog = ref(false);
 const showExtendStayDialog = ref(false);
 const showFolioDialog = ref(false);
+const showBookingWizard = ref(false);
+const viewMode = ref<'list' | 'calendar'>('list');
 const bookingToDelete = ref<Booking | null>(null);
 const bookingToProcessPayment = ref<Booking | null>(null);
 const bookingToCheckout = ref<Booking | null>(null);
@@ -345,20 +391,6 @@ watch(
     },
 );
 
-const submit = () => {
-    form.post(store(props.team.slug).url, {
-        onSuccess: () => {
-            showCreateForm.value = false;
-            form.reset();
-            form.status = 'pending';
-            form.number_of_guests = '1';
-            form.process_payment = false;
-            form.payment_method = 'cash';
-            form.payment_date = new Date().toISOString().split('T')[0];
-        },
-    });
-};
-
 const bookingBalance = (booking: Booking) => {
     const total = Number(
         booking.invoice?.total_amount ?? booking.total_amount ?? 0,
@@ -508,14 +540,65 @@ const deleteBooking = () => {
             description="Manage guest reservations and check-ins"
         />
 
-        <div v-if="!showCreateForm" class="flex justify-end">
-            <Button @click="showCreateForm = true" class="gap-2">
+        <!-- Operations Dashboard -->
+        <OperationsDashboard
+            :upcomingCheckIns="dashboard.upcomingCheckIns"
+            :pendingCheckOuts="dashboard.pendingCheckOuts"
+            :pendingPayments="dashboard.pendingPayments"
+            :today="dashboard.today"
+        />
+
+        <!-- View Toggle & Create Button -->
+        <div class="flex items-center justify-between">
+            <div class="flex gap-2">
+                <Button
+                    :variant="viewMode === 'list' ? 'default' : 'outline'"
+                    @click="viewMode = 'list'"
+                    class="gap-2"
+                >
+                    <LayoutList class="h-4 w-4" />
+                    List View
+                </Button>
+                <Button
+                    :variant="viewMode === 'calendar' ? 'default' : 'outline'"
+                    @click="viewMode = 'calendar'"
+                    class="gap-2"
+                >
+                    <Calendar class="h-4 w-4" />
+                    Calendar View
+                </Button>
+            </div>
+
+            <Button @click="showBookingWizard = true" class="gap-2">
                 <Plus class="h-4 w-4" />
                 New Booking
             </Button>
         </div>
 
-        <Card>
+        <!-- Booking Wizard -->
+        <BookingWizard
+            :open="showBookingWizard"
+            :rooms="rooms"
+            @close="showBookingWizard = false"
+            @submit="
+                () => {
+                    showBookingWizard = false;
+                }
+            "
+        />
+
+        <!-- Calendar View -->
+        <BookingCalendar
+            v-if="viewMode === 'calendar'"
+            :bookings="dashboard.calendarBookings"
+            :rooms="rooms"
+            :startDate="dashboard.calendarStart"
+            :endDate="dashboard.calendarEnd"
+            @viewBooking="(id) => {}"
+        />
+
+        <!-- Filters (List View Only) -->
+        <Card v-if="viewMode === 'list'">
             <CardHeader>
                 <CardTitle>Filter Bookings</CardTitle>
             </CardHeader>
@@ -672,312 +755,13 @@ const deleteBooking = () => {
             </CardContent>
         </Card>
 
-        <!-- Create useForm -->
-        <Card v-if="showCreateForm">
-            <CardHeader>
-                <CardTitle>New Booking</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <form @submit.prevent="submit" class="space-y-4">
-                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div>
-                            <Label for="guest_name">Guest Name *</Label>
-                            <Input
-                                id="guest_name"
-                                v-model="form.guest_name"
-                                type="text"
-                                class="mt-1"
-                                placeholder="Jane Smith"
-                            />
-                            <InputError
-                                :message="form.errors.guest_name"
-                                class="mt-2"
-                            />
-                        </div>
-
-                        <div>
-                            <Label for="guest_email">Guest Email *</Label>
-                            <Input
-                                id="guest_email"
-                                v-model="form.guest_email"
-                                type="email"
-                                class="mt-1"
-                                placeholder="jane@example.com"
-                            />
-                            <InputError
-                                :message="form.errors.guest_email"
-                                class="mt-2"
-                            />
-                        </div>
-
-                        <div>
-                            <Label for="guest_phone">Guest Phone</Label>
-                            <Input
-                                id="guest_phone"
-                                v-model="form.guest_phone"
-                                type="text"
-                                class="mt-1"
-                                placeholder="+1234567890"
-                            />
-                            <InputError
-                                :message="form.errors.guest_phone"
-                                class="mt-2"
-                            />
-                        </div>
-
-                        <div>
-                            <Label for="number_of_guests">Guests *</Label>
-                            <Input
-                                id="number_of_guests"
-                                v-model="form.number_of_guests"
-                                type="number"
-                                class="mt-1"
-                                min="1"
-                            />
-                            <InputError
-                                :message="form.errors.number_of_guests"
-                                class="mt-2"
-                            />
-                        </div>
-
-                        <div>
-                            <Label for="room_id">Room *</Label>
-                            <Select v-model="form.room_id">
-                                <SelectTrigger id="room_id" class="mt-1">
-                                    <SelectValue placeholder="Select a room" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem
-                                        v-for="room in rooms"
-                                        :key="room.id"
-                                        :value="String(room.id)"
-                                    >
-                                        Room {{ room.room_number }} —
-                                        {{ room.room_type }} · ₦{{
-                                            room.price_per_night
-                                        }}/night
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <InputError
-                                :message="form.errors.room_id"
-                                class="mt-2"
-                            />
-                        </div>
-
-                        <div>
-                            <Label for="status">Status *</Label>
-                            <Select v-model="form.status">
-                                <SelectTrigger id="status" class="mt-1">
-                                    <SelectValue placeholder="Select status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem
-                                        v-for="s in statuses"
-                                        :key="s"
-                                        :value="s"
-                                    >
-                                        {{ optionStatusLabel(s) }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <InputError
-                                :message="form.errors.status"
-                                class="mt-2"
-                            />
-                        </div>
-
-                        <div>
-                            <Label for="check_in_date">Check-in Date *</Label>
-                            <Input
-                                id="check_in_date"
-                                v-model="form.check_in_date"
-                                type="date"
-                                class="mt-1"
-                            />
-                            <InputError
-                                :message="form.errors.check_in_date"
-                                class="mt-2"
-                            />
-                        </div>
-
-                        <div>
-                            <Label for="check_out_date">Check-out Date *</Label>
-                            <Input
-                                id="check_out_date"
-                                v-model="form.check_out_date"
-                                type="date"
-                                class="mt-1"
-                            />
-                            <InputError
-                                :message="form.errors.check_out_date"
-                                class="mt-2"
-                            />
-                        </div>
-
-                        <div class="flex items-end gap-2">
-                            <div class="flex-1">
-                                <Label>Booking Total</Label>
-                                <div
-                                    class="mt-1 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-900"
-                                >
-                                    {{
-                                        calculatedNights > 0
-                                            ? `₦${calculatedTotal.toFixed(2)} (${calculatedNights} nights)`
-                                            : '—'
-                                    }}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="md:col-span-2">
-                            <label
-                                class="flex items-center gap-2 text-sm font-medium text-gray-700"
-                            >
-                                <input
-                                    v-model="form.process_payment"
-                                    type="checkbox"
-                                    class="h-4 w-4 rounded border-gray-300"
-                                />
-                                Process payment now
-                            </label>
-                            <p class="mt-1 text-xs text-gray-500">
-                                If unchecked, this is saved as reservation and
-                                payment can be processed from the list.
-                            </p>
-                        </div>
-
-                        <template v-if="form.process_payment">
-                            <div>
-                                <Label for="payment_amount"
-                                    >Payment Amount *</Label
-                                >
-                                <Input
-                                    id="payment_amount"
-                                    v-model="form.payment_amount"
-                                    type="number"
-                                    min="0.01"
-                                    step="0.01"
-                                    class="mt-1"
-                                />
-                                <InputError
-                                    :message="form.errors.payment_amount"
-                                    class="mt-2"
-                                />
-                                <p class="mt-2 text-xs text-gray-500">
-                                    You can take a deposit now and collect the
-                                    balance later.
-                                </p>
-                            </div>
-
-                            <div>
-                                <Label for="payment_method"
-                                    >Payment Method *</Label
-                                >
-                                <Select v-model="form.payment_method">
-                                    <SelectTrigger
-                                        id="payment_method"
-                                        class="mt-1"
-                                    >
-                                        <SelectValue
-                                            placeholder="Select method"
-                                        />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="cash"
-                                            >Cash</SelectItem
-                                        >
-                                        <SelectItem value="card"
-                                            >Card</SelectItem
-                                        >
-                                        <SelectItem value="bank_transfer"
-                                            >Bank Transfer</SelectItem
-                                        >
-                                        <SelectItem value="online"
-                                            >Online</SelectItem
-                                        >
-                                        <SelectItem value="other"
-                                            >Other</SelectItem
-                                        >
-                                    </SelectContent>
-                                </Select>
-                                <InputError
-                                    :message="form.errors.payment_method"
-                                    class="mt-2"
-                                />
-                            </div>
-
-                            <div>
-                                <Label for="payment_date">Payment Date *</Label>
-                                <Input
-                                    id="payment_date"
-                                    v-model="form.payment_date"
-                                    type="date"
-                                    class="mt-1"
-                                />
-                                <InputError
-                                    :message="form.errors.payment_date"
-                                    class="mt-2"
-                                />
-                            </div>
-
-                            <div>
-                                <Label for="payment_reference"
-                                    >Payment Reference</Label
-                                >
-                                <Input
-                                    id="payment_reference"
-                                    v-model="form.payment_reference"
-                                    type="text"
-                                    class="mt-1"
-                                    placeholder="Transaction reference"
-                                />
-                                <InputError
-                                    :message="form.errors.payment_reference"
-                                    class="mt-2"
-                                />
-                            </div>
-                        </template>
-                    </div>
-
-                    <div>
-                        <Label for="notes">Notes</Label>
-                        <Input
-                            id="notes"
-                            v-model="form.notes"
-                            type="text"
-                            class="mt-1"
-                            placeholder="Special requests..."
-                        />
-                        <InputError :message="form.errors.notes" class="mt-2" />
-                    </div>
-
-                    <div class="flex gap-2 pt-4">
-                        <Button
-                            type="submit"
-                            :disabled="form.processing"
-                            class="hover:bg-hotel-primary/90 bg-black"
-                        >
-                            {{
-                                form.processing
-                                    ? 'Creating...'
-                                    : 'Create Booking'
-                            }}
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            @click="showCreateForm = false"
-                        >
-                            Cancel
-                        </Button>
-                    </div>
-                </form>
-            </CardContent>
-        </Card>
+        <!-- Create useForm (Deprecated - Using Wizard Instead) -->
 
         <!-- Bookings List -->
-        <div v-if="bookings.length > 0" class="space-y-4">
+        <div
+            v-if="viewMode === 'list' && bookings.length > 0"
+            class="space-y-4"
+        >
             <Card
                 v-for="booking in bookings"
                 :key="booking.id"
@@ -1004,7 +788,7 @@ const deleteBooking = () => {
                                         class="flex flex-wrap items-center gap-2"
                                     >
                                         <h3
-                                            class="text-lg font-semibold tracking-tight break-words text-gray-900"
+                                            class="text-lg font-semibold tracking-tight wrap-break-word text-gray-900"
                                         >
                                             {{ booking.guest_name }}
                                         </h3>
@@ -1015,7 +799,7 @@ const deleteBooking = () => {
                                         </Badge>
                                     </div>
                                     <p
-                                        class="text-sm break-words text-gray-500"
+                                        class="text-sm wrap-break-word text-gray-500"
                                     >
                                         {{ booking.guest_email }}
                                         <span v-if="booking.guest_phone">
@@ -1043,12 +827,12 @@ const deleteBooking = () => {
                                         Stay
                                     </p>
                                     <p
-                                        class="mt-1 text-sm font-semibold break-words text-slate-900"
+                                        class="mt-1 text-sm font-semibold wrap-break-word text-slate-900"
                                     >
                                         {{ bookingStayLabel(booking) }}
                                     </p>
                                     <p
-                                        class="text-xs break-words text-slate-500"
+                                        class="text-xs wrap-break-word text-slate-500"
                                     >
                                         {{
                                             nights(
@@ -1069,7 +853,7 @@ const deleteBooking = () => {
                                         Billing
                                     </p>
                                     <p
-                                        class="mt-1 text-sm font-semibold break-words text-slate-900"
+                                        class="mt-1 text-sm font-semibold wrap-break-word text-slate-900"
                                     >
                                         {{
                                             formatCurrency(
@@ -1078,7 +862,7 @@ const deleteBooking = () => {
                                         }}
                                     </p>
                                     <p
-                                        class="text-xs break-words text-slate-500"
+                                        class="text-xs wrap-break-word text-slate-500"
                                     >
                                         {{
                                             booking.invoice?.invoice_number ??

@@ -113,6 +113,18 @@ class PaymentController extends Controller
             ->with('message', "Payment {$payment->payment_number} has been recorded.");
     }
 
+    public function receipt(Request $request, Team $current_team, Payment $payment): Response
+    {
+        $this->paymentForTeam($current_team, $payment);
+
+        Gate::authorize('view', [$payment, $current_team]);
+
+        return Inertia::render('payments/Receipt', [
+            'payment' => $payment->load('invoice:id,invoice_number,guest_name,guest_email,total_amount,paid_amount,status'),
+            'team' => $current_team->only('id', 'slug', 'name'),
+        ]);
+    }
+
     public function edit(Request $request, Team $current_team, Payment $payment): Response
     {
         $this->paymentForTeam($current_team, $payment);
