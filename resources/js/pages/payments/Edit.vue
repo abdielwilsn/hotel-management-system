@@ -43,6 +43,8 @@ type Payment = {
     status: string;
     reference: string | null;
     notes: string | null;
+    createdBy?: { id: number; name: string } | null;
+    updatedBy?: { id: number; name: string } | null;
     invoice?: {
         id: number;
         invoice_number: string;
@@ -112,6 +114,8 @@ const statusLabel = (status: string) =>
 const methodLabel = (method: string) =>
     method.replace('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 
+const userLabel = (user?: { name: string } | null) => user?.name ?? 'System';
+
 const submit = () => {
     form.patch(update([props.team.slug, props.payment.id]).url);
 };
@@ -143,6 +147,12 @@ const deletePayment = () => {
                 <p class="mt-1 text-gray-600">
                     {{ payment.invoice?.invoice_number }} ·
                     {{ payment.invoice?.guest_name }}
+                </p>
+                <p class="mt-1 text-sm text-gray-500">
+                    Created by {{ userLabel(payment.createdBy) }}
+                    <span v-if="payment.updatedBy">
+                        · Last action by {{ userLabel(payment.updatedBy) }}
+                    </span>
                 </p>
             </div>
             <Badge :class="statusColor(payment.status)">

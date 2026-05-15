@@ -40,15 +40,15 @@ class ImportedAppDataSeeder extends Seeder
         $this->seedStaff($team, $departments);
 
         $rooms = $this->seedRooms($team);
-        $guests = $this->seedGuests($team);
-        $bookings = $this->seedBookings($team, $rooms, $guests);
-        $invoices = $this->seedInvoices($team, $bookings);
+        // $guests = $this->seedGuests($team);
+        // $bookings = $this->seedBookings($team, $rooms, $guests);
+        // $invoices = $this->seedInvoices($team, $bookings);
 
-        $this->seedPayments($team, $invoices);
-        $this->seedExpenses($team);
+        // $this->seedPayments($team, $invoices);
+        // $this->seedExpenses($team);
 
         $items = $this->seedInventory($team);
-        $this->seedInventorySales($team, $items, $bookings);
+        // $this->seedInventorySales($team, $items, $bookings);
     }
 
     /**

@@ -45,6 +45,8 @@ test('admins can create bookings', function () {
         'guest_email' => 'jane@example.com',
         'team_id' => $team->id,
         'room_id' => $room->id,
+        'created_by_user_id' => $user->id,
+        'updated_by_user_id' => $user->id,
     ]);
 });
 
@@ -73,6 +75,7 @@ test('admins can update bookings', function () {
     $this->assertDatabaseHas('bookings', [
         'id' => $booking->id,
         'status' => 'confirmed',
+        'updated_by_user_id' => $user->id,
     ]);
 });
 
@@ -111,6 +114,8 @@ test('members can create bookings', function () {
         'guest_email' => 'jane@example.com',
         'team_id' => $team->id,
         'room_id' => $room->id,
+        'created_by_user_id' => $user->id,
+        'updated_by_user_id' => $user->id,
     ]);
 });
 

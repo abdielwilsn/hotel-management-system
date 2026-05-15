@@ -68,6 +68,8 @@ test('admins can create completed payments and invoice paid amount is updated', 
         'invoice_id' => $invoice->id,
         'amount' => 500,
         'status' => 'completed',
+        'created_by_user_id' => $user->id,
+        'updated_by_user_id' => $user->id,
     ]);
 
     $createdPayment = Payment::query()
@@ -125,6 +127,7 @@ test('admins can update payments and invoice paid amount is recalculated', funct
         'id' => $payment->id,
         'amount' => 450,
         'method' => 'bank_transfer',
+        'updated_by_user_id' => $user->id,
     ]);
 
     expect((float) $invoice->fresh()->paid_amount)->toBe(500.0);
@@ -189,6 +192,8 @@ test('members can create completed payments', function () {
         'invoice_id' => $invoice->id,
         'amount' => 100,
         'status' => 'completed',
+        'created_by_user_id' => $user->id,
+        'updated_by_user_id' => $user->id,
     ]);
 });
 

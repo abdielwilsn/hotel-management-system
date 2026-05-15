@@ -34,7 +34,11 @@ class PaymentController extends Controller
         ]);
 
         $payments = $current_team->payments()
-            ->with('invoice:id,invoice_number,guest_name,total_amount,paid_amount')
+            ->with([
+                'invoice:id,invoice_number,guest_name,total_amount,paid_amount',
+                'createdBy:id,name',
+                'updatedBy:id,name',
+            ])
             ->when($filters['search'] ?? null, function (Builder $query, string $search): void {
                 $query->where(function (Builder $subQuery) use ($search): void {
                     $subQuery
@@ -104,6 +108,8 @@ class PaymentController extends Controller
 
         $data = $request->validated();
         $data['payment_number'] = $this->generatePaymentNumber($current_team);
+        $data['created_by_user_id'] = $request->user()?->id;
+        $data['updated_by_user_id'] = $request->user()?->id;
 
         $payment = $current_team->payments()->create($data);
 
@@ -120,7 +126,11 @@ class PaymentController extends Controller
         Gate::authorize('view', [$payment, $current_team]);
 
         return Inertia::render('payments/Receipt', [
-            'payment' => $payment->load('invoice:id,invoice_number,guest_name,guest_email,total_amount,paid_amount,status'),
+            'payment' => $payment->load([
+                'invoice:id,invoice_number,guest_name,guest_email,total_amount,paid_amount,status',
+                'createdBy:id,name',
+                'updatedBy:id,name',
+            ]),
             'team' => $current_team->only('id', 'slug', 'name'),
         ]);
     }
@@ -139,7 +149,11 @@ class PaymentController extends Controller
         $statuses = ['pending', 'completed', 'failed', 'refunded'];
 
         return Inertia::render('payments/Edit', [
-            'payment' => $payment->load('invoice:id,invoice_number,guest_name,total_amount,paid_amount'),
+            'payment' => $payment->load([
+                'invoice:id,invoice_number,guest_name,total_amount,paid_amount',
+                'createdBy:id,name',
+                'updatedBy:id,name',
+            ]),
             'invoices' => $invoices,
             'methods' => $methods,
             'statuses' => $statuses,
@@ -154,8 +168,10 @@ class PaymentController extends Controller
         Gate::authorize('update', [$payment, $current_team]);
 
         $previousInvoiceId = $payment->invoice_id;
+        $data = $request->validated();
+        $data['updated_by_user_id'] = $request->user()?->id;
 
-        $payment->update($request->validated());
+        $payment->update($data);
 
         if ((int) $previousInvoiceId !== (int) $payment->invoice_id) {
             $previousInvoice = Invoice::query()->find($previousInvoiceId);

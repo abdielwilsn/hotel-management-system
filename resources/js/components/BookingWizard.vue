@@ -283,7 +283,7 @@ watch(
                                 {{ room.capacity }} guests
                             </div>
                             <div class="mt-1 text-sm font-medium text-gray-900">
-                                ${{ room.price_per_night }}/night
+                                ₦{{ room.price_per_night }}/night
                             </div>
                         </button>
                     </div>
@@ -306,7 +306,7 @@ watch(
                         {{ selectedRoom.room_type }}
                     </div>
                     <div class="text-blue-700">
-                        ${{ selectedRoom.price_per_night }}/night
+                        ₦{{ selectedRoom.price_per_night }}/night
                     </div>
                 </div>
 
@@ -340,7 +340,7 @@ watch(
                         Total: {{ nightsCount }} nights
                     </div>
                     <div class="text-amber-700">
-                        ${{ totalAmount.toFixed(2) }}
+                        ₦{{ totalAmount.toFixed(2) }}
                     </div>
                 </div>
 
@@ -381,7 +381,7 @@ watch(
                             Booking Total
                         </div>
                         <div class="text-2xl font-bold text-green-700">
-                            ${{ totalAmount.toFixed(2) }}
+                            ₦{{ totalAmount.toFixed(2) }}
                         </div>
                     </div>
 

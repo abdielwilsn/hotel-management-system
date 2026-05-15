@@ -538,7 +538,7 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
             </Card>
         </section>
 
-        <section class="grid grid-cols-12 gap-6">
+        <!-- <section class="grid grid-cols-12 gap-6">
             <Card
                 class="dash-reveal elevated-card col-span-12 border border-white/55 xl:col-span-8"
                 style="animation-delay: 340ms"
@@ -662,7 +662,7 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
                     </div>
                 </CardContent>
             </Card>
-        </section>
+        </section> -->
 
         <Card
             class="dash-reveal elevated-card border border-white/55"

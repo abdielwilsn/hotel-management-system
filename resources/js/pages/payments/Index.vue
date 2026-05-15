@@ -45,6 +45,8 @@ type Payment = {
     status: string;
     reference: string | null;
     notes: string | null;
+    createdBy?: { id: number; name: string } | null;
+    updatedBy?: { id: number; name: string } | null;
     invoice?: {
         id: number;
         invoice_number: string;
@@ -253,6 +255,8 @@ const paymentSourceLabel = (payment: Payment) =>
 
 const paymentGuestLabel = (payment: Payment) =>
     payment.invoice?.guest_name ?? 'Guest';
+
+const userLabel = (user?: { name: string } | null) => user?.name ?? 'System';
 
 const selectedInvoice = computed(() =>
     props.invoices.find((invoice) => String(invoice.id) === form.invoice_id),
@@ -794,6 +798,20 @@ const deletePayment = () => {
                                                     'No reference'
                                                 }}
                                             </p>
+                                            <p class="text-xs text-slate-500">
+                                                Created by
+                                                {{
+                                                    userLabel(payment.createdBy)
+                                                }}
+                                                <span v-if="payment.updatedBy">
+                                                    · Last action by
+                                                    {{
+                                                        userLabel(
+                                                            payment.updatedBy,
+                                                        )
+                                                    }}
+                                                </span>
+                                            </p>
                                         </div>
 
                                         <div
@@ -871,6 +889,33 @@ const deletePayment = () => {
                                                 {{
                                                     payment.invoice
                                                         ?.guest_name ?? 'Guest'
+                                                }}
+                                            </p>
+                                        </div>
+
+                                        <div
+                                            class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
+                                        >
+                                            <p
+                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                            >
+                                                Audit Trail
+                                            </p>
+                                            <p
+                                                class="mt-1 text-sm font-semibold text-slate-900"
+                                            >
+                                                Created by
+                                                {{
+                                                    userLabel(payment.createdBy)
+                                                }}
+                                            </p>
+                                            <p class="text-xs text-slate-500">
+                                                Last action by
+                                                {{
+                                                    userLabel(
+                                                        payment.updatedBy ??
+                                                            payment.createdBy,
+                                                    )
                                                 }}
                                             </p>
                                         </div>

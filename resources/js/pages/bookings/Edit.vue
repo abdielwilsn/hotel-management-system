@@ -46,6 +46,8 @@ type Booking = {
     status: string;
     notes: string | null;
     room: RoomOption | null;
+    createdBy?: { id: number; name: string } | null;
+    updatedBy?: { id: number; name: string } | null;
 };
 
 type Props = {
@@ -104,6 +106,8 @@ const statusColor = (status: string) => {
 const statusLabel = (status: string) =>
     status.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
+const userLabel = (user?: { name: string } | null) => user?.name ?? 'System';
+
 const nights = (checkIn: string, checkOut: string) => {
     const ms = new Date(checkOut).getTime() - new Date(checkIn).getTime();
     return Math.round(ms / (1000 * 60 * 60 * 24));
@@ -155,6 +159,12 @@ const deleteBooking = () => {
                     {{ booking.guest_name }}
                 </h1>
                 <p class="mt-1 text-gray-600">{{ booking.guest_email }}</p>
+                <p class="mt-1 text-sm text-gray-500">
+                    Created by {{ userLabel(booking.createdBy) }}
+                    <span v-if="booking.updatedBy">
+                        · Last action by {{ userLabel(booking.updatedBy) }}
+                    </span>
+                </p>
             </div>
             <Badge :class="statusColor(booking.status)">{{
                 statusLabel(booking.status)

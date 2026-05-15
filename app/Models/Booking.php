@@ -14,6 +14,8 @@ class Booking extends Model
 
     protected $fillable = [
         'team_id',
+        'created_by_user_id',
+        'updated_by_user_id',
         'room_id',
         'guest_name',
         'guest_email',
@@ -37,6 +39,16 @@ class Booking extends Model
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
+    }
+
+    public function updatedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'updated_by_user_id');
     }
 
     public function room(): BelongsTo

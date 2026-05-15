@@ -66,6 +66,8 @@ type Booking = {
     status: string;
     notes: string | null;
     room: RoomOption | null;
+    createdBy?: { id: number; name: string } | null;
+    updatedBy?: { id: number; name: string } | null;
     invoice?: {
         id: number;
         invoice_number: string;
@@ -82,6 +84,8 @@ type Booking = {
             method: string;
             status: string;
             reference: string | null;
+            createdBy?: { id: number; name: string } | null;
+            updatedBy?: { id: number; name: string } | null;
         }>;
     } | null;
     extension_history?: Array<{
@@ -306,6 +310,8 @@ const formatCurrency = (value: number) =>
     }).format(Number(value));
 
 const paymentMethodLabel = (method: string) => statusLabel(method);
+
+const userLabel = (user?: { name: string } | null) => user?.name ?? 'System';
 
 const isReservation = (booking: Booking) =>
     booking.status === 'pending' && bookingBalance(booking) > 0;
@@ -807,6 +813,14 @@ const deleteBooking = () => {
                                             · {{ booking.guest_phone }}
                                         </span>
                                     </p>
+                                    <p class="text-xs text-slate-500">
+                                        Created by
+                                        {{ userLabel(booking.createdBy) }}
+                                        <span v-if="booking.updatedBy">
+                                            · Last action by
+                                            {{ userLabel(booking.updatedBy) }}
+                                        </span>
+                                    </p>
                                 </div>
 
                                 <div
@@ -969,6 +983,31 @@ const deleteBooking = () => {
                                     </p>
                                     <p class="text-xs text-slate-500">
                                         Remaining balance updates automatically.
+                                    </p>
+                                </div>
+
+                                <div
+                                    class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
+                                >
+                                    <p
+                                        class="text-xs font-medium tracking-wide text-slate-500 uppercase"
+                                    >
+                                        Audit Trail
+                                    </p>
+                                    <p
+                                        class="mt-1 text-sm font-semibold text-slate-900"
+                                    >
+                                        Created by
+                                        {{ userLabel(booking.createdBy) }}
+                                    </p>
+                                    <p class="text-xs text-slate-500">
+                                        Last action by
+                                        {{
+                                            userLabel(
+                                                booking.updatedBy ??
+                                                    booking.createdBy,
+                                            )
+                                        }}
                                     </p>
                                 </div>
 
@@ -1406,6 +1445,34 @@ const deleteBooking = () => {
                                 v-if="folioPayments.length > 0"
                                 class="divide-y divide-gray-200"
                             >
+                                <div class="rounded border border-gray-200 p-4">
+                                    <h3
+                                        class="text-sm font-semibold text-gray-900"
+                                    >
+                                        Booking Audit
+                                    </h3>
+                                    <div
+                                        class="mt-3 space-y-1 text-sm text-gray-600"
+                                    >
+                                        <p>
+                                            Created by
+                                            {{
+                                                userLabel(
+                                                    bookingToViewFolio.createdBy,
+                                                )
+                                            }}
+                                        </p>
+                                        <p>
+                                            Last action by
+                                            {{
+                                                userLabel(
+                                                    bookingToViewFolio.updatedBy ??
+                                                        bookingToViewFolio.createdBy,
+                                                )
+                                            }}
+                                        </p>
+                                    </div>
+                                </div>
                                 <div
                                     v-for="payment in folioPayments"
                                     :key="payment.id"
@@ -1431,6 +1498,16 @@ const deleteBooking = () => {
                                             class="text-xs text-gray-500"
                                         >
                                             Ref: {{ payment.reference }}
+                                        </p>
+                                        <p class="text-xs text-gray-500">
+                                            Created by
+                                            {{ userLabel(payment.createdBy) }}
+                                            <span v-if="payment.updatedBy">
+                                                · Last action by
+                                                {{
+                                                    userLabel(payment.updatedBy)
+                                                }}
+                                            </span>
                                         </p>
                                     </div>
 
@@ -1490,6 +1567,33 @@ const deleteBooking = () => {
                                         'No notes saved for this booking.'
                                     }}
                                 </p>
+                            </div>
+
+                            <div class="rounded border border-gray-200 p-4">
+                                <h3 class="text-sm font-semibold text-gray-900">
+                                    Booking Audit
+                                </h3>
+                                <div
+                                    class="mt-3 space-y-1 text-sm text-gray-600"
+                                >
+                                    <p>
+                                        Created by
+                                        {{
+                                            userLabel(
+                                                bookingToViewFolio.createdBy,
+                                            )
+                                        }}
+                                    </p>
+                                    <p>
+                                        Last action by
+                                        {{
+                                            userLabel(
+                                                bookingToViewFolio.updatedBy ??
+                                                    bookingToViewFolio.createdBy,
+                                            )
+                                        }}
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>

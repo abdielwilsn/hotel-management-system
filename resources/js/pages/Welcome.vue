@@ -1,8 +1,21 @@
 <script setup lang="ts">
 import { Head, Link, usePage } from '@inertiajs/vue3';
-import { Building2, Calendar, Users, BarChart3 } from 'lucide-vue-next';
+import {
+    BarChart3,
+    BellRing,
+    BookOpen,
+    Building2,
+    CalendarDays,
+    CreditCard,
+    ShieldCheck,
+    Users,
+    Wallet,
+} from 'lucide-vue-next';
 import { computed } from 'vue';
 import { dashboard, login, register } from '@/routes';
+import { index as bookingsIndex } from '@/routes/bookings';
+import { index as paymentsIndex } from '@/routes/payments';
+import { index as reportsIndex } from '@/routes/reports';
 import { Button } from '@/components/ui/button';
 
 withDefaults(
@@ -19,130 +32,335 @@ const dashboardUrl = computed(() =>
     page.props.currentTeam ? dashboard(page.props.currentTeam.slug).url : '/',
 );
 
-const features = [
+const teamSlug = computed(() => page.props.currentTeam?.slug ?? null);
+
+const consoleActions = computed(() => {
+    if (!teamSlug.value) {
+        return [];
+    }
+
+    return [
+        {
+            icon: CalendarDays,
+            title: 'Bookings',
+            description: 'Open reservations, check-ins, and room changes.',
+            href: bookingsIndex(teamSlug.value).url,
+        },
+        {
+            icon: CreditCard,
+            title: 'Payments',
+            description: 'Record payments and print receipts instantly.',
+            href: paymentsIndex(teamSlug.value).url,
+        },
+        {
+            icon: BarChart3,
+            title: 'Reports',
+            description: 'Review revenue, occupancy, and outstanding balances.',
+            href: reportsIndex(teamSlug.value).url,
+        },
+    ];
+});
+
+const operations = [
     {
-        icon: Building2,
-        title: 'Property Management',
-        description: 'Manage multiple properties with ease',
+        icon: BellRing,
+        title: 'Front Desk Ready',
+        description: 'One screen for arrivals, walk-ins, and nightly handoff.',
     },
     {
-        icon: Calendar,
-        title: 'Room Bookings',
-        description: 'Streamlined reservation system',
+        icon: Wallet,
+        title: 'Naira First',
+        description: 'Every booking, folio, and receipt is displayed in NGN.',
     },
     {
         icon: Users,
-        title: 'Staff Management',
-        description: 'Organize teams and departments',
+        title: 'Team Accountability',
+        description:
+            'Created by and last action by are visible on every record.',
     },
     {
-        icon: BarChart3,
-        title: 'Invoicing & Analytics',
-        description: 'Track revenue and occupancy rates',
+        icon: ShieldCheck,
+        title: 'Controlled Access',
+        description:
+            'Staff and admins can move fast without losing traceability.',
     },
 ];
 </script>
 
 <template>
-    <Head title="Hotel Management System" />
-    
-    <!-- Navigation -->
-    <nav class="fixed top-0 w-full bg-white/80 backdrop-blur-md border-b border-gray-200 dark:bg-gray-900/80 dark:border-gray-800 z-50">
-        <div class="max-w-7xl mx-auto px-6 lg:px-8 py-4 flex items-center justify-between">
-            <Link :href="'/'" class="flex items-center gap-2">
-                <div class="h-8 w-8 bg-gradient-to-br from-teal-600 to-teal-800 rounded-lg flex items-center justify-center">
-                    <Building2 class="h-5 w-5 text-white" />
-                </div>
-                <span class="font-semibold text-lg text-gray-900 dark:text-white">HMS</span>
-            </Link>
-            
-            <div class="flex items-center gap-4">
-                <Link
-                    v-if="$page.props.auth.user"
-                    :href="dashboardUrl"
-                >
-                    <Button>Dashboard</Button>
-                </Link>
-                <template v-else>
-                    <Link :href="login()">
-                        <Button variant="ghost">Log in</Button>
-                    </Link>
-                    <Link v-if="canRegister" :href="register()">
-                        <Button>Register</Button>
-                    </Link>
-                </template>
-            </div>
-        </div>
-    </nav>
+    <Head title="Front Desk Console" />
 
-    <!-- Hero Section -->
-    <div class="relative min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800 pt-24">
-        <!-- Background decoration -->
+    <div class="min-h-screen bg-[#07131f] text-white">
         <div class="absolute inset-0 overflow-hidden">
-            <div class="absolute -top-40 -right-40 w-80 h-80 bg-teal-100 rounded-full mix-blend-multiply filter blur-3xl opacity-20 dark:opacity-10 animate-pulse"></div>
-            <div class="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-100 rounded-full mix-blend-multiply filter blur-3xl opacity-20 dark:opacity-10 animate-pulse" style="animation-delay: 2s"></div>
+            <div
+                class="absolute -top-32 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-[#0ea5a0]/20 blur-3xl"
+            ></div>
+            <div
+                class="absolute right-0 bottom-0 h-96 w-96 translate-x-1/3 translate-y-1/4 rounded-full bg-[#f59e0b]/15 blur-3xl"
+            ></div>
+            <div
+                class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.05),transparent_30%)]"
+            ></div>
         </div>
 
-        <div class="relative max-w-7xl mx-auto px-6 lg:px-8 py-20">
-            <!-- Main heading -->
-            <div class="text-center mb-16">
-                <h1 class="text-5xl lg:text-6xl font-bold tracking-tight text-gray-900 dark:text-white mb-6">
-                    Modern Hotel
-                    <span class="bg-gradient-to-r from-teal-600 to-orange-500 bg-clip-text text-transparent">
-                        Management
-                    </span>
-                </h1>
-                <p class="text-xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto mb-8">
-                    Streamline your entire hotel operations with our comprehensive management system. From bookings to invoicing, we've got you covered.
-                </p>
-                
-                <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                    <Link v-if="$page.props.auth.user" :href="dashboardUrl">
-                        <Button size="lg" class="bg-teal-600 hover:bg-teal-700">
-                            Go to Dashboard
-                        </Button>
-                    </Link>
-                    <Link v-else :href="login()">
-                        <Button size="lg" class="bg-teal-600 hover:bg-teal-700">
-                            Log In
-                        </Button>
-                    </Link>
-                    <Link v-if="canRegister && !$page.props.auth.user" :href="register()">
-                        <Button size="lg" variant="outline">
-                            Create Account
-                        </Button>
-                    </Link>
-                </div>
-            </div>
-
-            <!-- Features Grid -->
-            <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mt-20">
-                <div
-                    v-for="(feature, index) in features"
-                    :key="index"
-                    class="group bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700"
-                >
-                    <div class="mb-4 p-3 bg-teal-50 dark:bg-teal-900/20 rounded-lg w-fit">
-                        <component
-                            :is="feature.icon"
-                            class="h-6 w-6 text-teal-600 dark:text-teal-400"
-                        />
+        <div
+            class="relative mx-auto flex min-h-screen max-w-7xl flex-col px-6 py-6 lg:px-8"
+        >
+            <nav
+                class="flex items-center justify-between rounded-3xl border border-white/10 bg-white/5 px-5 py-4 backdrop-blur-xl"
+            >
+                <Link :href="'/'" class="flex items-center gap-3">
+                    <div
+                        class="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0ea5a0] to-[#155e75] shadow-lg shadow-cyan-950/30"
+                    >
+                        <Building2 class="h-6 w-6 text-white" />
                     </div>
-                    <h3 class="font-semibold text-gray-900 dark:text-white mb-2">
-                        {{ feature.title }}
-                    </h3>
-                    <p class="text-sm text-gray-600 dark:text-gray-400">
-                        {{ feature.description }}
-                    </p>
+                    <div>
+                        <p
+                            class="text-xs tracking-[0.35em] text-white/50 uppercase"
+                        >
+                            Hotel Management
+                        </p>
+                        <p class="text-lg font-semibold">Front Desk Console</p>
+                    </div>
+                </Link>
+
+                <div class="flex items-center gap-3">
+                    <Link v-if="$page.props.auth.user" :href="dashboardUrl">
+                        <Button
+                            class="bg-white text-slate-950 hover:bg-slate-100"
+                            >Open Dashboard</Button
+                        >
+                    </Link>
+                    <template v-else>
+                        <Link :href="login()">
+                            <Button
+                                variant="ghost"
+                                class="text-white hover:bg-white/10 hover:text-white"
+                                >Log in</Button
+                            >
+                        </Link>
+                        <Link v-if="canRegister" :href="register()">
+                            <Button
+                                class="bg-[#0ea5a0] text-white hover:bg-[#0b8a87]"
+                                >Register</Button
+                            >
+                        </Link>
+                    </template>
                 </div>
-            </div>
+            </nav>
+
+            <main
+                class="grid flex-1 gap-8 py-8 lg:grid-cols-[1.2fr_0.8fr] lg:py-12"
+            >
+                <section
+                    class="flex flex-col justify-between gap-8 rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-2xl shadow-black/20 backdrop-blur-xl lg:p-10"
+                >
+                    <div class="space-y-6">
+                        <div
+                            class="inline-flex items-center gap-2 rounded-full border border-[#f59e0b]/30 bg-[#f59e0b]/10 px-4 py-2 text-sm text-[#fde68a]"
+                        >
+                            <BellRing class="h-4 w-4" />
+                            Ready for check-ins, folios, and payments
+                        </div>
+
+                        <div class="max-w-3xl space-y-4">
+                            <h1
+                                class="text-5xl font-semibold tracking-tight text-white sm:text-6xl"
+                            >
+                                The hotel's
+                                <span
+                                    class="bg-gradient-to-r from-[#67e8f9] via-white to-[#fbbf24] bg-clip-text text-transparent"
+                                >
+                                    operational home
+                                </span>
+                            </h1>
+                            <p
+                                class="max-w-2xl text-lg leading-8 text-white/70"
+                            >
+                                A clean entry point for the front desk and back
+                                office. Open bookings, record payments, print
+                                receipts, and review performance without the
+                                noise of a public landing page.
+                            </p>
+                        </div>
+
+                        <div class="flex flex-wrap gap-3">
+                            <Link
+                                v-if="$page.props.auth.user"
+                                :href="dashboardUrl"
+                            >
+                                <Button
+                                    size="lg"
+                                    class="bg-white px-6 text-slate-950 hover:bg-slate-100"
+                                    >Open Dashboard</Button
+                                >
+                            </Link>
+                            <Link v-else :href="login()">
+                                <Button
+                                    size="lg"
+                                    class="bg-[#0ea5a0] px-6 text-white hover:bg-[#0b8a87]"
+                                    >Log in to continue</Button
+                                >
+                            </Link>
+                            <Link
+                                v-if="canRegister && !$page.props.auth.user"
+                                :href="register()"
+                            >
+                                <Button
+                                    size="lg"
+                                    variant="outline"
+                                    class="border-white/20 bg-white/5 px-6 text-white hover:bg-white/10"
+                                    >Create account</Button
+                                >
+                            </Link>
+                        </div>
+                    </div>
+
+                    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                        <article
+                            v-for="module in operations"
+                            :key="module.title"
+                            class="rounded-3xl border border-white/10 bg-slate-950/25 p-5"
+                        >
+                            <div
+                                class="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10"
+                            >
+                                <component
+                                    :is="module.icon"
+                                    class="h-6 w-6 text-[#67e8f9]"
+                                />
+                            </div>
+                            <h2 class="text-base font-semibold text-white">
+                                {{ module.title }}
+                            </h2>
+                            <p class="mt-2 text-sm leading-6 text-white/65">
+                                {{ module.description }}
+                            </p>
+                        </article>
+                    </div>
+                </section>
+
+                <aside
+                    class="space-y-5 rounded-[2rem] border border-white/10 bg-slate-950/40 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl lg:p-8"
+                >
+                    <div
+                        class="rounded-3xl border border-white/10 bg-white/5 p-5"
+                    >
+                        <p
+                            class="text-xs tracking-[0.35em] text-white/45 uppercase"
+                        >
+                            Quick access
+                        </p>
+                        <div
+                            v-if="consoleActions.length > 0"
+                            class="mt-4 space-y-3"
+                        >
+                            <Link
+                                v-for="action in consoleActions"
+                                :key="action.title"
+                                :href="action.href"
+                                class="flex items-start gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:bg-white/10"
+                            >
+                                <div
+                                    class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#0ea5a0]/15 text-[#67e8f9]"
+                                >
+                                    <component
+                                        :is="action.icon"
+                                        class="h-5 w-5"
+                                    />
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-white">
+                                        {{ action.title }}
+                                    </p>
+                                    <p
+                                        class="mt-1 text-sm leading-6 text-white/60"
+                                    >
+                                        {{ action.description }}
+                                    </p>
+                                </div>
+                            </Link>
+                        </div>
+                        <div
+                            v-else
+                            class="mt-4 rounded-2xl border border-dashed border-white/15 p-5 text-sm leading-7 text-white/60"
+                        >
+                            Sign in to open the operational console. The system
+                            will route you directly to the hotel's dashboard,
+                            bookings, and payment tools.
+                        </div>
+                    </div>
+
+                    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+                        <div
+                            class="rounded-3xl border border-white/10 bg-white/5 p-5"
+                        >
+                            <div class="flex items-center gap-3">
+                                <div
+                                    class="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#f59e0b]/15 text-[#fde68a]"
+                                >
+                                    <BookOpen class="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <p class="text-sm font-semibold text-white">
+                                        Reception flow
+                                    </p>
+                                    <p
+                                        class="text-xs tracking-[0.25em] text-white/35 uppercase"
+                                    >
+                                        Bookings, folios, receipts
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div
+                            class="rounded-3xl border border-white/10 bg-white/5 p-5"
+                        >
+                            <div class="flex items-center gap-3">
+                                <div
+                                    class="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#67e8f9]/15 text-[#67e8f9]"
+                                >
+                                    <Users class="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <p class="text-sm font-semibold text-white">
+                                        Traceable actions
+                                    </p>
+                                    <p
+                                        class="text-xs tracking-[0.25em] text-white/35 uppercase"
+                                    >
+                                        Created by and updated by
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div
+                            class="rounded-3xl border border-white/10 bg-white/5 p-5 sm:col-span-2 lg:col-span-1"
+                        >
+                            <div class="flex items-center gap-3">
+                                <div
+                                    class="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#22c55e]/15 text-[#86efac]"
+                                >
+                                    <BarChart3 class="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <p class="text-sm font-semibold text-white">
+                                        Revenue visibility
+                                    </p>
+                                    <p
+                                        class="text-xs tracking-[0.25em] text-white/35 uppercase"
+                                    >
+                                        Naira-based reporting
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+            </main>
         </div>
     </div>
-
-    <!-- Footer -->
-    <footer class="bg-gray-900 dark:bg-black text-gray-400 py-12">
-        <div class="max-w-7xl mx-auto px-6 lg:px-8 text-center">
-            <p>&copy; 2026 Hotel Management System. All rights reserved.</p>
-        </div>
-    </footer>
 </template>

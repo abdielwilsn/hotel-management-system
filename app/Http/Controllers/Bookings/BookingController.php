@@ -43,6 +43,8 @@ class BookingController extends Controller
         $bookings = $current_team->bookings()
             ->with([
                 'room',
+                'createdBy:id,name',
+                'updatedBy:id,name',
                 'invoice' => function ($query): void {
                     $query->select([
                         'invoices.id',
@@ -59,12 +61,18 @@ class BookingController extends Controller
                                 ->select([
                                     'payments.id',
                                     'payments.invoice_id',
+                                    'payments.created_by_user_id',
+                                    'payments.updated_by_user_id',
                                     'payments.payment_number',
                                     'payments.payment_date',
                                     'payments.amount',
                                     'payments.method',
                                     'payments.status',
                                     'payments.reference',
+                                ])
+                                ->with([
+                                    'createdBy:id,name',
+                                    'updatedBy:id,name',
                                 ])
                                 ->orderByDesc('payment_date')
                                 ->orderByDesc('id');
@@ -243,6 +251,7 @@ class BookingController extends Controller
         $booking = DB::transaction(function () use ($request, $current_team): Booking {
             $data = $request->validated();
             $processPayment = (bool) ($data['process_payment'] ?? false);
+            $actorId = $request->user()?->id;
 
             $room = Room::query()->findOrFail($data['room_id']);
             $pricePerNight = (float) $room->price_per_night;
@@ -263,6 +272,8 @@ class BookingController extends Controller
 
             $bookingPayload['price_per_night'] = $pricePerNight;
             $bookingPayload['total_amount'] = $totalAmount;
+            $bookingPayload['created_by_user_id'] = $actorId;
+            $bookingPayload['updated_by_user_id'] = $actorId;
 
             $booking = $current_team->bookings()->create($bookingPayload);
 
@@ -277,6 +288,7 @@ class BookingController extends Controller
                     $current_team,
                     $invoice,
                     [
+                        'actor_id' => $actorId,
                         'amount' => (float) $data['payment_amount'],
                         'method' => (string) $data['payment_method'],
                         'payment_date' => (string) $data['payment_date'],
@@ -287,7 +299,10 @@ class BookingController extends Controller
                 );
 
                 if ($booking->status === 'pending') {
-                    $booking->update(['status' => 'confirmed']);
+                    $booking->update([
+                        'status' => 'confirmed',
+                        'updated_by_user_id' => $actorId,
+                    ]);
                 }
             }
 
@@ -305,6 +320,7 @@ class BookingController extends Controller
         Gate::authorize('create', [Payment::class, $current_team]);
 
         $payment = DB::transaction(function () use ($booking, $current_team, $request): ?Payment {
+            $actorId = $request->user()?->id;
             $invoice = $this->syncBookingInvoice($current_team, $booking);
 
             $balance = round((float) $invoice->total_amount - (float) $invoice->paid_amount, 2);
@@ -319,6 +335,7 @@ class BookingController extends Controller
             }
 
             $payment = $this->recordPayment($current_team, $invoice, [
+                'actor_id' => $actorId,
                 'amount' => $amount,
                 'method' => (string) $request->validated('method'),
                 'payment_date' => (string) $request->validated('payment_date'),
@@ -328,7 +345,10 @@ class BookingController extends Controller
             ]);
 
             if ($booking->status === 'pending') {
-                $booking->update(['status' => 'confirmed']);
+                $booking->update([
+                    'status' => 'confirmed',
+                    'updated_by_user_id' => $actorId,
+                ]);
             }
 
             return $payment;
@@ -350,12 +370,14 @@ class BookingController extends Controller
         Gate::authorize('update', [$booking, $current_team]);
 
         DB::transaction(function () use ($booking, $current_team, $request): void {
+            $actorId = $request->user()?->id;
             $invoice = $this->syncBookingInvoice($current_team, $booking);
             $balance = round((float) $invoice->total_amount - (float) $invoice->paid_amount, 2);
             $settlementAmount = round((float) ($request->validated('settlement_amount') ?? 0), 2);
 
             if ($balance > 0 && $settlementAmount > 0) {
                 $this->recordPayment($current_team, $invoice, [
+                    'actor_id' => $actorId,
                     'amount' => $settlementAmount,
                     'method' => (string) $request->validated('settlement_method'),
                     'payment_date' => (string) $request->validated('settlement_payment_date'),
@@ -365,7 +387,10 @@ class BookingController extends Controller
                 ]);
             }
 
-            $booking->update(['status' => 'checked_out']);
+            $booking->update([
+                'status' => 'checked_out',
+                'updated_by_user_id' => $actorId,
+            ]);
 
             $this->releaseRoomIfNoActiveBookings($booking->room()->first(), $booking->id);
         });
@@ -381,6 +406,7 @@ class BookingController extends Controller
         Gate::authorize('update', [$booking, $current_team]);
 
         DB::transaction(function () use ($booking, $current_team, $request): void {
+            $actorId = $request->user()?->id;
             $newCheckOutDate = (string) $request->validated('check_out_date');
             $updatedNotes = $booking->notes;
 
@@ -398,6 +424,7 @@ class BookingController extends Controller
                 'check_out_date' => $newCheckOutDate,
                 'total_amount' => $totalAmount,
                 'notes' => $updatedNotes,
+                'updated_by_user_id' => $actorId,
             ]);
 
             $invoice = $this->syncBookingInvoice($current_team, $booking->fresh());
@@ -418,7 +445,7 @@ class BookingController extends Controller
         $statuses = ['pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled'];
 
         return Inertia::render('bookings/Edit', [
-            'booking' => $booking->load('room'),
+            'booking' => $booking->load(['room', 'createdBy:id,name', 'updatedBy:id,name']),
             'rooms' => $rooms,
             'statuses' => $statuses,
             'team' => $current_team->only('id', 'slug', 'name'),
@@ -432,10 +459,12 @@ class BookingController extends Controller
         Gate::authorize('update', [$booking, $current_team]);
 
         $data = $request->validated();
+        $actorId = $request->user()?->id;
         $room = Room::query()->findOrFail($data['room_id']);
         $nights = max(1, Carbon::parse($data['check_in_date'])->diffInDays($data['check_out_date']));
         $data['price_per_night'] = $room->price_per_night;
         $data['total_amount'] = $data['price_per_night'] * $nights;
+        $data['updated_by_user_id'] = $actorId;
 
         $oldStatus = $booking->status;
         $oldRoomId = $booking->room_id;
@@ -518,12 +547,14 @@ class BookingController extends Controller
     }
 
     /**
-     * @param  array{amount: float, method: string, payment_date: string, status: string, reference: mixed, notes: mixed}  $payload
+     * @param  array{actor_id?: int|null, amount: float, method: string, payment_date: string, status: string, reference: mixed, notes: mixed}  $payload
      */
     private function recordPayment(Team $team, Invoice $invoice, array $payload): Payment
     {
         $payment = $team->payments()->create([
             'invoice_id' => $invoice->id,
+            'created_by_user_id' => $payload['actor_id'] ?? null,
+            'updated_by_user_id' => $payload['actor_id'] ?? null,
             'payment_number' => $this->generatePaymentNumber($team),
             'payment_date' => $payload['payment_date'],
             'amount' => $payload['amount'],
