@@ -88,7 +88,7 @@ const operations = [
 </script>
 
 <template>
-    <Head title="Front Desk Console" />
+    <Head title="Ann's Haven | Front Desk Console" />
 
     <div class="min-h-screen bg-[#07131f] text-white">
         <div class="absolute inset-0 overflow-hidden">
@@ -119,7 +119,7 @@ const operations = [
                         <p
                             class="text-xs tracking-[0.35em] text-white/50 uppercase"
                         >
-                            Hotel Management
+                            Ann's Haven
                         </p>
                         <p class="text-lg font-semibold">Front Desk Console</p>
                     </div>
@@ -168,20 +168,20 @@ const operations = [
                             <h1
                                 class="text-5xl font-semibold tracking-tight text-white sm:text-6xl"
                             >
-                                The hotel's
+                                Ann's Haven's
                                 <span
                                     class="bg-gradient-to-r from-[#67e8f9] via-white to-[#fbbf24] bg-clip-text text-transparent"
                                 >
-                                    operational home
+                                    front desk home
                                 </span>
                             </h1>
                             <p
                                 class="max-w-2xl text-lg leading-8 text-white/70"
                             >
-                                A clean entry point for the front desk and back
-                                office. Open bookings, record payments, print
-                                receipts, and review performance without the
-                                noise of a public landing page.
+                                A focused entry point for Ann's Haven's front
+                                desk and back office. Open bookings, record
+                                payments, print receipts, and review performance
+                                without the noise of a public landing page.
                             </p>
                         </div>
 
@@ -287,7 +287,7 @@ const operations = [
                             class="mt-4 rounded-2xl border border-dashed border-white/15 p-5 text-sm leading-7 text-white/60"
                         >
                             Sign in to open the operational console. The system
-                            will route you directly to the hotel's dashboard,
+                            will route you directly to Ann's Haven's dashboard,
                             bookings, and payment tools.
                         </div>
                     </div>
