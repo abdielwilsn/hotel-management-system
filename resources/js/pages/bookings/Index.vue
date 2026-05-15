@@ -2,7 +2,7 @@
 import { useForm, Link, usePage, router } from '@inertiajs/vue3';
 import {
     CalendarDays,
-    CircleDollarSign,
+    Wallet,
     FileText,
     Plus,
     Trash2,
@@ -579,6 +579,7 @@ const deleteBooking = () => {
         <BookingWizard
             :open="showBookingWizard"
             :rooms="rooms"
+            :team-slug="props.team.slug"
             @close="showBookingWizard = false"
             @submit="
                 () => {
@@ -1024,7 +1025,7 @@ const deleteBooking = () => {
                                     class="h-10 w-full justify-start gap-2 rounded-xl"
                                     @click="openProcessPaymentDialog(booking)"
                                 >
-                                    <CircleDollarSign class="h-4 w-4" />
+                                    <Wallet class="h-4 w-4" />
                                     Process Payment
                                 </Button>
                                 <Button

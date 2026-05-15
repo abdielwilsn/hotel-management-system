@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import { ChevronRight, ChevronLeft, Search } from 'lucide-vue-next';
+import { store } from '@/routes/bookings';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,6 +34,7 @@ type Room = {
 type Props = {
     open: boolean;
     rooms: Room[];
+    teamSlug: string;
 };
 
 const props = defineProps<Props>();
@@ -124,7 +126,7 @@ const applyRoomSearch = () => {
 };
 
 const submitForm = () => {
-    form.post(route('bookings.store'), {
+    form.post(store(props.teamSlug).url, {
         preserveScroll: true,
         preserveState: true,
         onSuccess: () => {

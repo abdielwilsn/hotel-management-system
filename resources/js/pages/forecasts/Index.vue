@@ -3,7 +3,7 @@ import { Head } from '@inertiajs/vue3';
 import {
     AlertTriangle,
     CalendarRange,
-    CircleDollarSign,
+    Wallet,
     TrendingUp,
 } from 'lucide-vue-next';
 import Heading from '@/components/Heading.vue';
@@ -89,7 +89,7 @@ const formatCurrency = (value: number) =>
                         class="flex items-center justify-between text-sm text-muted-foreground"
                     >
                         Projected revenue
-                        <CircleDollarSign class="text-hotel-primary size-4" />
+                        <Wallet class="text-hotel-primary size-4" />
                     </CardTitle>
                 </CardHeader>
                 <CardContent>

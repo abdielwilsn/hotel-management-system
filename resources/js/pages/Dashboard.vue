@@ -5,7 +5,7 @@ import {
     BedDouble,
     Building2,
     CalendarClock,
-    CircleDollarSign,
+    Wallet,
     Command,
     DoorOpen,
     Plus,
@@ -68,7 +68,7 @@ const metricIcon = (title: string) => {
         return DoorOpen;
     }
 
-    return CircleDollarSign;
+    return Wallet;
 };
 
 const quickActions = [
@@ -372,8 +372,8 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
                         class="flex items-center justify-between text-sm font-semibold text-slate-500"
                     >
                         {{ metric.title }}
-                            <component
-                                :is="metricIcon(metric.title)"
+                        <component
+                            :is="metricIcon(metric.title)"
                             class="size-4 text-(--primary-brand)"
                         />
                     </CardTitle>

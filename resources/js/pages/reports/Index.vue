@@ -3,10 +3,9 @@ import { Head } from '@inertiajs/vue3';
 import {
     BarChart3,
     CalendarClock,
-    CircleDollarSign,
+    Wallet,
     DoorOpen,
     Hotel,
-    Wallet,
 } from 'lucide-vue-next';
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
@@ -135,7 +134,7 @@ const maxMethodValue = Math.max(
                         class="flex items-center justify-between text-sm text-muted-foreground"
                     >
                         Gross revenue
-                        <CircleDollarSign class="text-hotel-primary size-4" />
+                        <Wallet class="text-hotel-primary size-4" />
                     </CardTitle>
                 </CardHeader>
                 <CardContent>

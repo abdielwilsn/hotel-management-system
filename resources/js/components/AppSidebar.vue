@@ -6,7 +6,7 @@ import {
     BookOpen,
     Building2,
     CalendarDays,
-    CircleDollarSign,
+    Wallet,
     CreditCard,
     Home,
     Package,
@@ -93,7 +93,7 @@ const mainNavItems = computed<NavItem[]>(() => [
         href: page.props.currentTeam
             ? invoices(page.props.currentTeam.slug).url
             : '/',
-        icon: CircleDollarSign,
+        icon: Wallet,
     },
     {
         title: 'Payments',
