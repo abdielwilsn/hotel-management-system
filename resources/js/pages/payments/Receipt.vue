@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import { onMounted } from 'vue';
+import { useFormatters } from '@/lib/format';
 import { index as bookingIndex } from '@/routes/bookings';
 import { index as paymentIndex } from '@/routes/payments';
 
@@ -39,11 +40,7 @@ defineOptions({
     layout: null,
 });
 
-const formatCurrency = (value: number) =>
-    new Intl.NumberFormat('en-NG', {
-        style: 'currency',
-        currency: 'NGN',
-    }).format(Number(value));
+const { formatCurrency } = useFormatters();
 
 const formatDate = (value: string) =>
     new Date(value).toLocaleDateString('en-US', {

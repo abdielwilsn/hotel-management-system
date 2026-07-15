@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Invoices\SaveInvoiceRequest;
 use App\Models\Invoice;
 use App\Models\Team;
+use App\Support\PaginationMeta;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -80,7 +81,8 @@ class InvoiceController extends Controller
                     ->whereColumn('paid_amount', '>=', 'total_amount');
             })
             ->orderByDesc('issue_date')
-            ->get();
+            ->paginate(20)
+            ->withQueryString();
 
         $bookings = $current_team->bookings()
             ->orderByDesc('check_in_date')
@@ -89,7 +91,8 @@ class InvoiceController extends Controller
         $statuses = ['draft', 'issued', 'partially_paid', 'paid', 'overdue', 'void'];
 
         return Inertia::render('invoices/Index', [
-            'invoices' => $invoices,
+            'invoices' => $invoices->items(),
+            'pagination' => PaginationMeta::from($invoices),
             'bookings' => $bookings,
             'statuses' => $statuses,
             'paymentStatuses' => ['unpaid', 'partial', 'paid'],

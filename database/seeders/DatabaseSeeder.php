@@ -14,7 +14,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             DemoUsersSeeder::class,
             ImportedAppDataSeeder::class,
+            PosSeeder::class,
         ]);
     }
 }
-

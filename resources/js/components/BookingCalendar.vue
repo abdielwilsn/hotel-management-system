@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue';
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { computed } from 'vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 type Booking = {
     id: number;
@@ -42,9 +42,11 @@ const dayRange = computed(() => {
     const start = new Date(props.startDate);
     const end = new Date(props.endDate);
     const days: Date[] = [];
+
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         days.push(new Date(d));
     }
+
     return days;
 });
 
@@ -53,6 +55,7 @@ const roomsWithBookings = computed(() => {
         const roomBookings = (props.bookings || []).filter(
             (b) => b.room_id === room.id,
         );
+
         return { ...room, bookings: roomBookings };
     });
 });
@@ -60,6 +63,7 @@ const roomsWithBookings = computed(() => {
 const isBookingOnDay = (booking: Booking, date: Date) => {
     const checkIn = new Date(booking.check_in_date);
     const checkOut = new Date(booking.check_out_date);
+
     return date >= checkIn && date < checkOut;
 };
 
@@ -77,6 +81,7 @@ const statusColor = (status: string) => {
         checked_out: 'bg-gray-100 text-gray-800 border-gray-300',
         cancelled: 'bg-red-100 text-red-800 border-red-300',
     };
+
     return colors[status] || 'bg-gray-100 text-gray-800';
 };
 

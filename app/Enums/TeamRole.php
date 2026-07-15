@@ -7,13 +7,17 @@ enum TeamRole: string
     case Owner = 'owner';
     case Admin = 'admin';
     case Member = 'member';
+    case Pos = 'pos';
 
     /**
      * Get the display label for the role.
      */
     public function label(): string
     {
-        return ucfirst($this->value);
+        return match ($this) {
+            self::Pos => 'POS Staff',
+            default => ucfirst($this->value),
+        };
     }
 
     /**
@@ -31,6 +35,7 @@ enum TeamRole: string
                 TeamPermission::CancelInvitation,
             ],
             self::Member => [],
+            self::Pos => [],
         };
     }
 
@@ -52,6 +57,7 @@ enum TeamRole: string
             self::Owner => 3,
             self::Admin => 2,
             self::Member => 1,
+            self::Pos => 0,
         };
     }
 

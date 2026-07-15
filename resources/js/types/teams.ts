@@ -1,4 +1,4 @@
-export type TeamRole = 'owner' | 'admin' | 'member';
+export type TeamRole = 'owner' | 'admin' | 'member' | 'pos';
 
 export type Team = {
     id: number;
@@ -8,6 +8,8 @@ export type Team = {
     role?: TeamRole;
     roleLabel?: string;
     isCurrent?: boolean;
+    currency?: string;
+    locale?: string;
 };
 
 export type TeamMember = {

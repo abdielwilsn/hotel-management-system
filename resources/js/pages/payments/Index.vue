@@ -4,11 +4,11 @@ import { CreditCard, Edit, Plus, Printer, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import Pagination from '@/components/Pagination.vue';
+import type {PaginationMeta} from '@/components/Pagination.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
     Dialog,
     DialogContent,
@@ -16,6 +16,8 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
     Select,
     SelectContent,
@@ -23,6 +25,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { useFormatters } from '@/lib/format';
 import { destroy, edit, index, receipt, store } from '@/routes/payments';
 import type { Team } from '@/types';
 
@@ -58,6 +61,7 @@ type Payment = {
 
 type Props = {
     payments: Payment[];
+    pagination: PaginationMeta;
     invoices: InvoiceOption[];
     methods: string[];
     statuses: string[];
@@ -203,11 +207,7 @@ const statusLabel = (status: string) =>
 const methodLabel = (method: string) =>
     method.replace('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 
-const formatCurrency = (value: number) =>
-    new Intl.NumberFormat('en-NG', {
-        style: 'currency',
-        currency: 'NGN',
-    }).format(Number(value));
+const { formatCurrency } = useFormatters();
 
 const paymentAccentClass = (payment: Payment) => {
     if (payment.status === 'completed') {
@@ -1020,6 +1020,8 @@ const deletePayment = () => {
                         </CardContent>
                     </Card>
                 </div>
+
+                <Pagination :pagination="pagination" label="payments" />
             </CardContent>
         </Card>
 

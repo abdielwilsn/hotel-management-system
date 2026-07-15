@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { useForm, Link, usePage } from '@inertiajs/vue3';
+import { useForm, Link } from '@inertiajs/vue3';
 import { ChevronLeft, Trash2, Save } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -15,13 +22,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
+import { useFormatters } from '@/lib/format';
 import { index, update, destroy } from '@/routes/bookings';
 import type { Team } from '@/types';
 
@@ -58,8 +59,7 @@ type Props = {
 };
 
 const props = defineProps<Props>();
-const page = usePage();
-const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
+const { formatCurrency } = useFormatters();
 
 defineOptions({
     layout: (props: { currentTeam?: Team | null }) => ({
@@ -100,6 +100,7 @@ const statusColor = (status: string) => {
         checked_out: 'bg-gray-100 text-gray-800',
         cancelled: 'bg-red-100 text-red-800',
     };
+
     return colors[status] || 'bg-gray-100 text-gray-800';
 };
 
@@ -110,21 +111,29 @@ const userLabel = (user?: { name: string } | null) => user?.name ?? 'System';
 
 const nights = (checkIn: string, checkOut: string) => {
     const ms = new Date(checkOut).getTime() - new Date(checkIn).getTime();
+
     return Math.round(ms / (1000 * 60 * 60 * 24));
 };
 
 const selectedRoom = computed(() => {
     const roomId = Number(form.room_id);
+
     return props.rooms.find((r) => r.id === roomId) ?? null;
 });
 
 const calculatedNights = computed(() => {
-    if (!form.check_in_date || !form.check_out_date) return 0;
+    if (!form.check_in_date || !form.check_out_date) {
+        return 0;
+    }
+
     return Math.max(1, nights(form.check_in_date, form.check_out_date));
 });
 
 const calculatedTotal = computed(() => {
-    if (!selectedRoom.value || !calculatedNights.value) return 0;
+    if (!selectedRoom.value || !calculatedNights.value) {
+        return 0;
+    }
+
     return selectedRoom.value.price_per_night * calculatedNights.value;
 });
 
@@ -261,8 +270,11 @@ const deleteBooking = () => {
                                             :value="String(room.id)"
                                         >
                                             Room {{ room.room_number }} —
-                                            {{ room.room_type }} · ₦{{
-                                                room.price_per_night
+                                            {{ room.room_type }} ·
+                                            {{
+                                                formatCurrency(
+                                                    room.price_per_night,
+                                                )
                                             }}/night
                                         </SelectItem>
                                     </SelectContent>
@@ -355,15 +367,13 @@ const deleteBooking = () => {
                             Pricing Summary
                         </h3>
                         <p v-if="selectedRoom" class="text-sm text-gray-600">
-                            ₦{{
-                                Number(selectedRoom.price_per_night).toFixed(2)
-                            }}
+                            {{ formatCurrency(selectedRoom.price_per_night) }}
                             / night
                             <span v-if="calculatedNights > 0">
                                 · {{ calculatedNights }} nights · Total:
-                                <strong
-                                    >₦{{ calculatedTotal.toFixed(2) }}</strong
-                                >
+                                <strong>{{
+                                    formatCurrency(calculatedTotal)
+                                }}</strong>
                             </span>
                         </p>
                         <p v-else class="text-sm text-gray-500">

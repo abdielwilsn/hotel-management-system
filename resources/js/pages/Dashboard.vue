@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, usePage } from '@inertiajs/vue3';
+import { Deferred, Head, Link, usePage } from '@inertiajs/vue3';
 import {
     ArrowUpRight,
     BedDouble,
@@ -10,7 +10,6 @@ import {
     DoorOpen,
     Plus,
     Search,
-    TrendingUp,
     Users,
     CreditCard,
     LogIn,
@@ -19,6 +18,8 @@ import { computed, onMounted, ref } from 'vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useFormatters } from '@/lib/format';
 import { dashboard } from '@/routes';
 import { index as bookings } from '@/routes/bookings';
 import { index as payments } from '@/routes/payments';
@@ -48,12 +49,12 @@ type MetricCard = {
 };
 
 type Props = {
-    metricCards: MetricCard[];
+    metricCards?: MetricCard[];
 };
 
 const props = defineProps<Props>();
 
-const metricCards = props.metricCards;
+const metricCards = computed(() => props.metricCards ?? []);
 
 const metricIcon = (title: string) => {
     if (title === 'New Bookings') {
@@ -113,14 +114,6 @@ const channelMix = [
     { name: 'Other', percent: 6 },
 ];
 
-const todaySchedule = [
-    { day: 'Mon', date: '20', count: 3, note: 'Suite arrivals' },
-    { day: 'Tue', date: '21', count: 2, note: 'VIP check-ins' },
-    { day: 'Wed', date: '22', count: 5, note: 'Corporate group' },
-    { day: 'Thu', date: '23', count: 2, note: 'Late departures' },
-    { day: 'Fri', date: '24', count: 4, note: 'Weekend demand' },
-];
-
 const recentReservations = [
     {
         id: '#1234',
@@ -177,12 +170,7 @@ const today = new Intl.DateTimeFormat('en-US', {
     year: 'numeric',
 }).format(new Date());
 
-const formatNaira = (value: number) =>
-    new Intl.NumberFormat('en-NG', {
-        style: 'currency',
-        currency: 'NGN',
-        maximumFractionDigits: 0,
-    }).format(value);
+const { formatCurrency } = useFormatters();
 
 const brandRgb = ref<[number, number, number]>([15, 118, 110]);
 const positivePillTextColor = ref('#0f172a');
@@ -234,13 +222,17 @@ const deltaStyle = (delta: string) => {
 
 const page = usePage();
 const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
+
+const openSearch = () => {
+    window.dispatchEvent(new CustomEvent('open-command-palette'));
+};
 </script>
 
 <template>
     <Head title="Dashboard" />
 
     <div
-        class="dashboard-page relative flex min-h-full flex-col gap-6 overflow-x-hidden px-6 py-6 text-slate-900 lg:px-8 dark:text-slate-100"
+        class="dashboard-page relative flex min-h-full flex-col gap-4 overflow-x-hidden px-2 py-4 text-slate-900 sm:gap-6 sm:px-6 sm:py-6 lg:px-8 dark:text-slate-100"
     >
         <div
             class="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_8%_0%,rgb(var(--primary-brand-rgb)/0.14),transparent_32%),radial-gradient(circle_at_100%_8%,rgb(var(--accent-color-rgb)/0.10),transparent_30%),linear-gradient(180deg,#f9fafb_0%,#f4f6f8_100%)] dark:bg-[radial-gradient(circle_at_8%_0%,rgb(var(--primary-brand-rgb)/0.26),transparent_34%),radial-gradient(circle_at_100%_8%,rgb(var(--accent-color-rgb)/0.16),transparent_34%),linear-gradient(180deg,#020617_0%,#0b1120_100%)]"
@@ -248,7 +240,7 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
 
         <Card class="dash-reveal elevated-card border border-white/50">
             <CardContent
-                class="flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between xl:p-8"
+                class="flex flex-col gap-4 p-4 sm:p-6 lg:flex-row lg:items-center lg:justify-between xl:p-8"
             >
                 <div class="space-y-2">
                     <p
@@ -257,7 +249,7 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
                         Hotel command center
                     </p>
                     <h1
-                        class="headline-font text-3xl font-extrabold tracking-tight text-slate-900 lg:text-4xl"
+                        class="headline-font text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl lg:text-4xl"
                     >
                         Daily Operations Dashboard
                     </h1>
@@ -268,30 +260,33 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
                 </div>
 
                 <div class="flex w-full flex-col gap-3 lg:w-auto lg:min-w-115">
-                    <div
-                        class="inset-search flex items-center gap-2 rounded-2xl px-4 py-3"
+                    <button
+                        type="button"
+                        class="inset-search flex items-center gap-2 rounded-2xl px-4 py-3 text-left"
+                        aria-label="Search reservations, guests, and rooms"
+                        @click="openSearch"
                     >
                         <Search class="size-4 text-slate-500" />
-                        <input
-                            type="text"
-                            placeholder="Search reservations, guests, invoices"
-                            class="w-full bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
-                        />
+                        <span
+                            class="w-full bg-transparent text-sm text-slate-400"
+                        >
+                            Search reservations, guests, rooms…
+                        </span>
                         <span
                             class="headline-font rounded-lg border border-slate-300/80 bg-white px-2.5 py-1 text-xs font-bold text-slate-700"
                         >
                             <Command class="mr-1 inline size-3" />K
                         </span>
-                    </div>
+                    </button>
 
                     <div
                         v-if="currentTeam"
-                        class="flex flex-wrap justify-end gap-2"
+                        class="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:justify-end lg:flex lg:flex-wrap"
                     >
                         <Button
                             as-child
                             variant="outline"
-                            class="rounded-xl border-slate-300/80 bg-white/90"
+                            class="w-full rounded-xl border-slate-300/80 bg-white/90 lg:w-auto"
                         >
                             <Link :href="rooms(currentTeam.slug).url">
                                 Room board
@@ -301,7 +296,7 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
                         <Button
                             as-child
                             variant="outline"
-                            class="rounded-xl border-slate-300/80 bg-white/90"
+                            class="w-full rounded-xl border-slate-300/80 bg-white/90 lg:w-auto"
                         >
                             <Link :href="staff(currentTeam.slug).url">
                                 Team schedule
@@ -310,7 +305,7 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
                         </Button>
                         <Button
                             as-child
-                            class="rounded-xl bg-(--primary-brand) text-white hover:opacity-95"
+                            class="col-span-1 w-full rounded-xl bg-(--primary-brand) text-white hover:opacity-95 sm:col-span-2 lg:col-span-1 lg:w-auto"
                         >
                             <Link :href="bookings(currentTeam.slug).url">
                                 Open reservations
@@ -333,24 +328,33 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
                 v-for="(action, index) in quickActions"
                 :key="action.title"
                 :href="action.route(currentTeam)"
-                class="col-span-12 sm:col-span-6 lg:col-span-3"
+                class="col-span-6 lg:col-span-3"
             >
                 <Card
-                    class="dash-reveal elevated-card h-full cursor-pointer border border-white/55 transition-all hover:border-white/80 hover:shadow-lg"
+                    class="dash-reveal elevated-card h-full cursor-pointer gap-2 border border-white/55 py-0 transition-all hover:border-white/80 hover:shadow-lg sm:gap-6 sm:py-6"
                     :style="{ animationDelay: `${(index + 4) * 70}ms` }"
                 >
-                    <CardContent class="p-6">
+                    <CardContent class="px-3 py-2.5 sm:p-6">
                         <div
-                            class="flex flex-col items-center gap-4 text-center"
+                            class="flex items-center gap-2.5 text-left sm:flex-col sm:gap-4 sm:text-center"
                         >
-                            <div :class="`rounded-2xl p-3 ${action.color}`">
-                                <component :is="action.icon" class="size-6" />
+                            <div
+                                :class="`shrink-0 rounded-xl p-2 sm:rounded-2xl sm:p-3 ${action.color}`"
+                            >
+                                <component
+                                    :is="action.icon"
+                                    class="size-4.5 sm:size-6"
+                                />
                             </div>
-                            <div>
-                                <p class="font-semibold text-slate-900">
+                            <div class="min-w-0">
+                                <p
+                                    class="text-sm font-semibold text-slate-900 sm:text-base"
+                                >
                                     {{ action.title }}
                                 </p>
-                                <p class="mt-1 text-xs text-slate-500">
+                                <p
+                                    class="mt-0.5 hidden text-xs text-slate-500 sm:mt-1 sm:block"
+                                >
                                     {{ action.description }}
                                 </p>
                             </div>
@@ -360,53 +364,83 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
             </Link>
         </section>
 
-        <section class="grid grid-cols-12 gap-6">
-            <Card
-                v-for="(metric, index) in metricCards"
-                :key="metric.title"
-                class="dash-reveal elevated-card col-span-12 border border-white/55 sm:col-span-6 xl:col-span-3"
-                :style="{ animationDelay: `${index * 70}ms` }"
-            >
-                <CardHeader class="px-5 pt-5 pb-2">
-                    <CardTitle
-                        class="flex items-center justify-between text-sm font-semibold text-slate-500"
+        <Deferred data="metricCards">
+            <template #fallback>
+                <section class="grid grid-cols-12 gap-3 sm:gap-6">
+                    <Card
+                        v-for="n in 4"
+                        :key="n"
+                        class="elevated-card col-span-6 gap-2 border border-white/55 py-0 sm:gap-6 sm:py-6 xl:col-span-3"
                     >
-                        {{ metric.title }}
-                        <component
-                            :is="metricIcon(metric.title)"
-                            class="size-4 text-(--primary-brand)"
-                        />
-                    </CardTitle>
-                </CardHeader>
-                <CardContent class="space-y-3 px-5 pb-5">
-                    <p
-                        class="headline-font text-3xl font-extrabold tracking-tight text-slate-900"
-                    >
-                        {{
-                            metric.currency
-                                ? formatNaira(metric.value)
-                                : metric.value
-                        }}
-                    </p>
-                    <div class="flex items-center gap-2 text-xs">
-                        <Badge
-                            class="rounded-full px-2.5 py-1 font-semibold"
-                            :style="deltaStyle(metric.delta)"
+                        <CardHeader
+                            class="px-4 pt-4 pb-1 sm:px-5 sm:pt-5 sm:pb-2"
                         >
-                            {{ metric.delta }}
-                        </Badge>
-                        <span class="text-slate-500">{{ metric.hint }}</span>
-                    </div>
-                </CardContent>
-            </Card>
-        </section>
+                            <Skeleton class="h-4 w-20" />
+                        </CardHeader>
+                        <CardContent
+                            class="space-y-2 px-4 pb-4 sm:space-y-3 sm:px-5 sm:pb-5"
+                        >
+                            <Skeleton class="h-7 w-16 sm:h-8 sm:w-20" />
+                            <Skeleton class="h-4 w-24 sm:w-32" />
+                        </CardContent>
+                    </Card>
+                </section>
+            </template>
+
+            <section class="grid grid-cols-12 gap-3 sm:gap-6">
+                <Card
+                    v-for="(metric, index) in metricCards"
+                    :key="metric.title"
+                    class="dash-reveal elevated-card col-span-6 gap-2 border border-white/55 py-0 sm:gap-6 sm:py-6 xl:col-span-3"
+                    :style="{ animationDelay: `${index * 70}ms` }"
+                >
+                    <CardHeader class="px-4 pt-4 pb-1 sm:px-5 sm:pt-5 sm:pb-2">
+                        <CardTitle
+                            class="flex items-center justify-between gap-2 text-xs font-semibold text-slate-500 sm:text-sm"
+                        >
+                            <span class="truncate">{{ metric.title }}</span>
+                            <component
+                                :is="metricIcon(metric.title)"
+                                class="size-4 shrink-0 text-(--primary-brand)"
+                            />
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent
+                        class="space-y-2 px-4 pb-4 sm:space-y-3 sm:px-5 sm:pb-5"
+                    >
+                        <p
+                            class="headline-font text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl"
+                        >
+                            {{
+                                metric.currency
+                                    ? formatCurrency(metric.value)
+                                    : metric.value
+                            }}
+                        </p>
+                        <div
+                            class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs"
+                        >
+                            <Badge
+                                class="rounded-full px-2 py-0.5 font-semibold sm:px-2.5 sm:py-1"
+                                :style="deltaStyle(metric.delta)"
+                            >
+                                {{ metric.delta }}
+                            </Badge>
+                            <span class="hidden text-slate-500 sm:inline">{{
+                                metric.hint
+                            }}</span>
+                        </div>
+                    </CardContent>
+                </Card>
+            </section>
+        </Deferred>
 
         <section class="grid grid-cols-12 gap-6">
             <Card
                 class="dash-reveal elevated-card col-span-12 border border-white/55 xl:col-span-8"
                 style="animation-delay: 220ms"
             >
-                <CardHeader class="px-6 pt-6 pb-2">
+                <CardHeader class="px-4 pt-5 pb-2 sm:px-6 sm:pt-6">
                     <CardTitle
                         class="headline-font flex items-center justify-between text-base font-extrabold text-slate-900"
                     >
@@ -417,7 +451,7 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
                         >
                     </CardTitle>
                 </CardHeader>
-                <CardContent class="px-6 pb-6">
+                <CardContent class="px-4 pb-5 sm:px-6 sm:pb-6">
                     <div
                         class="relative h-72 overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4"
                     >
@@ -487,13 +521,13 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
                 class="dash-reveal elevated-card col-span-12 border border-white/55 xl:col-span-4"
                 style="animation-delay: 280ms"
             >
-                <CardHeader class="px-6 pt-6 pb-2">
+                <CardHeader class="px-4 pt-5 pb-2 sm:px-6 sm:pt-6">
                     <CardTitle
                         class="headline-font text-base font-extrabold text-slate-900"
                         >Bookings by channel</CardTitle
                     >
                 </CardHeader>
-                <CardContent class="space-y-4 px-6 pb-6">
+                <CardContent class="space-y-4 px-4 pb-5 sm:px-6 sm:pb-6">
                     <div class="space-y-3">
                         <div
                             v-for="channel in channelMix"
@@ -543,7 +577,7 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
                 class="dash-reveal elevated-card col-span-12 border border-white/55 xl:col-span-8"
                 style="animation-delay: 340ms"
             >
-                <CardHeader class="px-6 pt-6 pb-2">
+                <CardHeader class="px-4 pt-5 pb-2 sm:px-6 sm:pt-6">
                     <CardTitle
                         class="headline-font flex items-center justify-between text-base font-extrabold text-slate-900"
                     >
@@ -556,7 +590,7 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
                         </div>
                     </CardTitle>
                 </CardHeader>
-                <CardContent class="space-y-4 px-6 pb-6">
+                <CardContent class="space-y-4 px-4 pb-5 sm:px-6 sm:pb-6">
                     <div class="grid gap-3 sm:grid-cols-3">
                         <div
                             class="rounded-2xl border border-slate-200 bg-slate-50 p-4"
@@ -629,13 +663,13 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
                 class="dash-reveal elevated-card col-span-12 border border-white/55 xl:col-span-4"
                 style="animation-delay: 400ms"
             >
-                <CardHeader class="px-6 pt-6 pb-2">
+                <CardHeader class="px-4 pt-5 pb-2 sm:px-6 sm:pt-6">
                     <CardTitle
                         class="headline-font text-base font-extrabold text-slate-900"
                         >Front desk calendar</CardTitle
                     >
                 </CardHeader>
-                <CardContent class="space-y-3 px-6 pb-6">
+                <CardContent class="space-y-3 px-4 pb-5 sm:px-6 sm:pb-6">
                     <div
                         v-for="day in todaySchedule"
                         :key="`${day.day}-${day.date}`"
@@ -668,7 +702,7 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
             class="dash-reveal elevated-card border border-white/55"
             style="animation-delay: 460ms"
         >
-            <CardHeader class="px-6 pt-6 pb-2">
+            <CardHeader class="px-4 pt-5 pb-2 sm:px-6 sm:pt-6">
                 <CardTitle
                     class="headline-font flex items-center justify-between text-base font-extrabold text-slate-900"
                 >
@@ -678,28 +712,38 @@ const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
                     >
                 </CardTitle>
             </CardHeader>
-            <CardContent class="space-y-2 px-6 pb-6">
+            <CardContent class="space-y-2 px-4 pb-5 sm:px-6 sm:pb-6">
                 <div
                     v-for="reservation in recentReservations"
                     :key="reservation.id"
-                    class="grid grid-cols-[auto_1fr] items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 sm:grid-cols-[90px_1fr_110px_1fr_130px]"
+                    class="rounded-2xl border border-slate-200 bg-white px-3 py-3 sm:grid sm:grid-cols-[90px_1fr_110px_1fr_130px] sm:items-center sm:gap-3 sm:py-2.5"
                 >
-                    <p class="text-xs font-bold text-(--primary-brand)">
-                        {{ reservation.id }}
-                    </p>
-                    <p class="text-sm font-semibold text-slate-900">
-                        {{ reservation.guest }}
-                    </p>
-                    <div class="flex items-center gap-1 text-xs text-slate-500">
-                        <BedDouble class="size-3.5" />
-                        {{ reservation.stay }}
+                    <div
+                        class="flex items-center justify-between gap-2 sm:contents"
+                    >
+                        <p class="text-xs font-bold text-(--primary-brand)">
+                            {{ reservation.id }}
+                        </p>
+                        <p class="text-sm font-semibold text-slate-900">
+                            {{ reservation.guest }}
+                        </p>
                     </div>
-                    <p class="text-xs text-slate-500">
-                        {{ reservation.action }}
-                    </p>
-                    <p class="text-xs font-semibold text-slate-600">
-                        {{ reservation.room }}
-                    </p>
+                    <div
+                        class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 sm:mt-0 sm:contents"
+                    >
+                        <div
+                            class="flex items-center gap-1 text-xs text-slate-500"
+                        >
+                            <BedDouble class="size-3.5" />
+                            {{ reservation.stay }}
+                        </div>
+                        <p class="text-xs text-slate-500">
+                            {{ reservation.action }}
+                        </p>
+                        <p class="text-xs font-semibold text-slate-600">
+                            {{ reservation.room }}
+                        </p>
+                    </div>
                 </div>
 
                 <div

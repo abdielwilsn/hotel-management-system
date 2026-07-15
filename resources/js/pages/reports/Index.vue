@@ -10,6 +10,7 @@ import {
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useFormatters } from '@/lib/format';
 import { index } from '@/routes/reports';
 
 type Summary = {
@@ -59,11 +60,7 @@ defineOptions({
     }),
 });
 
-const formatCurrency = (value: number) =>
-    new Intl.NumberFormat('en-NG', {
-        style: 'currency',
-        currency: 'NGN',
-    }).format(value);
+const { formatCurrency } = useFormatters();
 
 const formatMethod = (value: string) =>
     value.replace('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());

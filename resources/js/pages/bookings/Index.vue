@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { useForm, Link, usePage, router } from '@inertiajs/vue3';
 import {
+    BadgePercent,
     CalendarDays,
+    Check,
     Wallet,
     FileText,
     Plus,
@@ -9,16 +11,19 @@ import {
     Edit,
     LayoutList,
     Calendar,
+    X,
 } from 'lucide-vue-next';
-import { computed, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import BookingCalendar from '@/components/BookingCalendar.vue';
 import BookingWizard from '@/components/BookingWizard.vue';
+import FilterSheet from '@/components/FilterSheet.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import OperationsDashboard from '@/components/OperationsDashboard.vue';
+import Pagination from '@/components/Pagination.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
     Dialog,
     DialogContent,
@@ -35,6 +40,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { useFormatters } from '@/lib/format';
 import {
     checkout,
     destroy,
@@ -43,6 +49,11 @@ import {
     index,
     processPayment as processBookingPayment,
 } from '@/routes/bookings';
+import {
+    approve as approveDiscount,
+    reject as rejectDiscount,
+    store as storeDiscount,
+} from '@/routes/bookings/discounts';
 import type { Team } from '@/types';
 
 type RoomOption = {
@@ -91,10 +102,31 @@ type Booking = {
     extension_history?: Array<{
         label: string;
     }>;
+    active_discount?: {
+        id: number;
+        type: 'percentage' | 'fixed';
+        value: number;
+        amount: number;
+        reason: string | null;
+        status: string;
+        requested_by?: { id: number; name: string } | null;
+    } | null;
+};
+
+type Pagination = {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+    from: number | null;
+    to: number | null;
+    prev_url: string | null;
+    next_url: string | null;
 };
 
 type Props = {
     bookings: Booking[];
+    pagination: Pagination;
     rooms: RoomOption[];
     statuses: string[];
     paymentStatuses: string[];
@@ -171,7 +203,6 @@ defineOptions({
     }),
 });
 
-const showCreateForm = ref(false);
 const showDeleteDialog = ref(false);
 const showProcessPaymentDialog = ref(false);
 const showCheckoutDialog = ref(false);
@@ -194,24 +225,6 @@ const filtersForm = useForm({
     check_in_to: props.filters.check_in_to ?? '',
     check_out_from: props.filters.check_out_from ?? '',
     check_out_to: props.filters.check_out_to ?? '',
-});
-
-const form = useForm({
-    room_id: '',
-    guest_name: '',
-    guest_email: '',
-    guest_phone: '',
-    number_of_guests: '1',
-    check_in_date: '',
-    check_out_date: '',
-    status: 'pending',
-    notes: '',
-    process_payment: false,
-    payment_amount: '',
-    payment_method: 'cash',
-    payment_date: new Date().toISOString().split('T')[0],
-    payment_reference: '',
-    payment_notes: '',
 });
 
 const deleteForm = useForm({});
@@ -246,6 +259,19 @@ const hasActiveFilters = computed(() =>
         filtersForm.check_out_from ||
         filtersForm.check_out_to,
     ),
+);
+
+// Advanced filters shown inside the drawer (search stays inline, so it is
+// excluded from the badge count).
+const activeFilterCount = computed(
+    () =>
+        (filtersForm.status !== 'all' ? 1 : 0) +
+        (filtersForm.payment_status !== 'all' ? 1 : 0) +
+        (filtersForm.room_id !== 'all' ? 1 : 0) +
+        (filtersForm.check_in_from ? 1 : 0) +
+        (filtersForm.check_in_to ? 1 : 0) +
+        (filtersForm.check_out_from ? 1 : 0) +
+        (filtersForm.check_out_to ? 1 : 0),
 );
 
 const applyFilters = () => {
@@ -303,11 +329,7 @@ const statusColor = (status: string) => {
 const statusLabel = (status: string) =>
     status.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-const formatCurrency = (value: number) =>
-    new Intl.NumberFormat('en-NG', {
-        style: 'currency',
-        currency: 'NGN',
-    }).format(Number(value));
+const { formatCurrency } = useFormatters();
 
 const paymentMethodLabel = (method: string) => statusLabel(method);
 
@@ -350,6 +372,14 @@ const canCheckoutBooking = (booking: Booking) =>
 const canExtendBooking = (booking: Booking) =>
     booking.status === 'confirmed' || booking.status === 'checked_in';
 
+const canRequestDiscount = (booking: Booking) =>
+    !['checked_out', 'cancelled'].includes(booking.status);
+
+const discountLabel = (discount: NonNullable<Booking['active_discount']>) =>
+    discount.type === 'percentage'
+        ? `${Number(discount.value)}%`
+        : formatCurrency(discount.amount);
+
 const optionStatusLabel = (status: string) =>
     status === 'pending' ? 'Reservation' : statusLabel(status);
 
@@ -365,37 +395,6 @@ const nights = (checkIn: string, checkOut: string) => {
 
     return Math.round(ms / (1000 * 60 * 60 * 24));
 };
-
-const selectedRoom = computed(() => {
-    const roomId = Number(form.room_id);
-
-    return props.rooms.find((r) => r.id === roomId) ?? null;
-});
-
-const calculatedNights = computed(() => {
-    if (!form.check_in_date || !form.check_out_date) {
-        return 0;
-    }
-
-    return Math.max(1, nights(form.check_in_date, form.check_out_date));
-});
-
-const calculatedTotal = computed(() => {
-    if (!selectedRoom.value || !calculatedNights.value) {
-        return 0;
-    }
-
-    return selectedRoom.value.price_per_night * calculatedNights.value;
-});
-
-watch(
-    [() => form.process_payment, calculatedTotal],
-    ([isProcessing, total]) => {
-        if (isProcessing && total > 0) {
-            form.payment_amount = total.toFixed(2);
-        }
-    },
-);
 
 const bookingBalance = (booking: Booking) => {
     const total = Number(
@@ -489,6 +488,85 @@ const folioExtensionHistory = computed(
     () => bookingToViewFolio.value?.extension_history ?? [],
 );
 
+// --- Discounts ---
+const showDiscountDialog = ref(false);
+const showRejectDiscountDialog = ref(false);
+const bookingToDiscount = ref<Booking | null>(null);
+const discountToReject = ref<Booking | null>(null);
+
+const discountForm = useForm({
+    type: 'percentage',
+    value: '',
+    reason: '',
+});
+const approveDiscountForm = useForm({});
+const rejectDiscountForm = useForm({ review_notes: '' });
+
+const openDiscountDialog = (booking: Booking) => {
+    bookingToDiscount.value = booking;
+    discountForm.reset();
+    showDiscountDialog.value = true;
+};
+
+const submitDiscount = () => {
+    if (!bookingToDiscount.value) {
+        return;
+    }
+
+    discountForm.post(
+        storeDiscount([props.team.slug, bookingToDiscount.value.id]).url,
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                showDiscountDialog.value = false;
+                bookingToDiscount.value = null;
+            },
+        },
+    );
+};
+
+const approveBookingDiscount = (booking: Booking) => {
+    if (!booking.active_discount) {
+        return;
+    }
+
+    approveDiscountForm.post(
+        approveDiscount([
+            props.team.slug,
+            booking.id,
+            booking.active_discount.id,
+        ]).url,
+        { preserveScroll: true },
+    );
+};
+
+const openRejectDiscountDialog = (booking: Booking) => {
+    discountToReject.value = booking;
+    rejectDiscountForm.reset();
+    showRejectDiscountDialog.value = true;
+};
+
+const submitRejectDiscount = () => {
+    if (!discountToReject.value?.active_discount) {
+        return;
+    }
+
+    rejectDiscountForm.post(
+        rejectDiscount([
+            props.team.slug,
+            discountToReject.value.id,
+            discountToReject.value.active_discount.id,
+        ]).url,
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                showRejectDiscountDialog.value = false;
+                discountToReject.value = null;
+            },
+        },
+    );
+};
+
 const checkoutBooking = () => {
     if (!bookingToCheckout.value) {
         return;
@@ -555,12 +633,14 @@ const deleteBooking = () => {
         />
 
         <!-- View Toggle & Create Button -->
-        <div class="flex items-center justify-between">
+        <div
+            class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+        >
             <div class="flex gap-2">
                 <Button
                     :variant="viewMode === 'list' ? 'default' : 'outline'"
                     @click="viewMode = 'list'"
-                    class="gap-2"
+                    class="flex-1 gap-2 sm:flex-none"
                 >
                     <LayoutList class="h-4 w-4" />
                     List View
@@ -568,14 +648,17 @@ const deleteBooking = () => {
                 <Button
                     :variant="viewMode === 'calendar' ? 'default' : 'outline'"
                     @click="viewMode = 'calendar'"
-                    class="gap-2"
+                    class="flex-1 gap-2 sm:flex-none"
                 >
                     <Calendar class="h-4 w-4" />
                     Calendar View
                 </Button>
             </div>
 
-            <Button @click="showBookingWizard = true" class="gap-2">
+            <Button
+                @click="showBookingWizard = true"
+                class="w-full gap-2 sm:w-auto"
+            >
                 <Plus class="h-4 w-4" />
                 New Booking
             </Button>
@@ -605,164 +688,131 @@ const deleteBooking = () => {
         />
 
         <!-- Filters (List View Only) -->
-        <Card v-if="viewMode === 'list'">
-            <CardHeader>
-                <CardTitle>Filter Bookings</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <form @submit.prevent="applyFilters" class="space-y-4">
-                    <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
-                        <div class="md:col-span-2">
-                            <Label for="booking_filter_search">Search</Label>
-                            <Input
-                                id="booking_filter_search"
-                                v-model="filtersForm.search"
-                                class="mt-1"
-                                placeholder="Guest, email, phone, room"
-                            />
-                        </div>
+        <FilterSheet
+            v-if="viewMode === 'list'"
+            title="Filter Bookings"
+            description="Narrow reservations by status, payment, room, and dates."
+            :active-count="activeFilterCount"
+            @apply="applyFilters"
+            @clear="clearFilters"
+        >
+            <template #search>
+                <Input
+                    id="booking_filter_search"
+                    v-model="filtersForm.search"
+                    placeholder="Search guest, email, phone, room…"
+                    aria-label="Search bookings"
+                    @keyup.enter="applyFilters"
+                />
+            </template>
 
-                        <div>
-                            <Label for="booking_filter_status">Status</Label>
-                            <Select v-model="filtersForm.status">
-                                <SelectTrigger
-                                    id="booking_filter_status"
-                                    class="mt-1"
-                                >
-                                    <SelectValue placeholder="Any status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all"
-                                        >Any status</SelectItem
-                                    >
-                                    <SelectItem
-                                        v-for="status in statuses"
-                                        :key="status"
-                                        :value="status"
-                                    >
-                                        {{ optionStatusLabel(status) }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div>
-                            <Label for="booking_filter_payment_status"
-                                >Payment Status</Label
-                            >
-                            <Select v-model="filtersForm.payment_status">
-                                <SelectTrigger
-                                    id="booking_filter_payment_status"
-                                    class="mt-1"
-                                >
-                                    <SelectValue
-                                        placeholder="Any payment status"
-                                    />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all"
-                                        >Any payment status</SelectItem
-                                    >
-                                    <SelectItem
-                                        v-for="paymentStatus in paymentStatuses"
-                                        :key="paymentStatus"
-                                        :value="paymentStatus"
-                                    >
-                                        {{ statusLabel(paymentStatus) }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div>
-                            <Label for="booking_filter_room">Room</Label>
-                            <Select v-model="filtersForm.room_id">
-                                <SelectTrigger
-                                    id="booking_filter_room"
-                                    class="mt-1"
-                                >
-                                    <SelectValue placeholder="Any room" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all"
-                                        >Any room</SelectItem
-                                    >
-                                    <SelectItem
-                                        v-for="room in rooms"
-                                        :key="room.id"
-                                        :value="String(room.id)"
-                                    >
-                                        Room {{ room.room_number }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div>
-                            <Label for="booking_filter_check_in_from"
-                                >Check-in From</Label
-                            >
-                            <Input
-                                id="booking_filter_check_in_from"
-                                v-model="filtersForm.check_in_from"
-                                type="date"
-                                class="mt-1"
-                            />
-                        </div>
-
-                        <div>
-                            <Label for="booking_filter_check_in_to"
-                                >Check-in To</Label
-                            >
-                            <Input
-                                id="booking_filter_check_in_to"
-                                v-model="filtersForm.check_in_to"
-                                type="date"
-                                class="mt-1"
-                            />
-                        </div>
-
-                        <div>
-                            <Label for="booking_filter_check_out_from"
-                                >Check-out From</Label
-                            >
-                            <Input
-                                id="booking_filter_check_out_from"
-                                v-model="filtersForm.check_out_from"
-                                type="date"
-                                class="mt-1"
-                            />
-                        </div>
-
-                        <div>
-                            <Label for="booking_filter_check_out_to"
-                                >Check-out To</Label
-                            >
-                            <Input
-                                id="booking_filter_check_out_to"
-                                v-model="filtersForm.check_out_to"
-                                type="date"
-                                class="mt-1"
-                            />
-                        </div>
-                    </div>
-
-                    <div class="flex items-center gap-2">
-                        <Button type="submit">Apply Filters</Button>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            :disabled="!hasActiveFilters"
-                            @click="clearFilters"
+            <div>
+                <Label for="booking_filter_status">Status</Label>
+                <Select v-model="filtersForm.status">
+                    <SelectTrigger id="booking_filter_status" class="mt-1">
+                        <SelectValue placeholder="Any status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Any status</SelectItem>
+                        <SelectItem
+                            v-for="status in statuses"
+                            :key="status"
+                            :value="status"
                         >
-                            Clear
-                        </Button>
-                    </div>
-                </form>
-            </CardContent>
-        </Card>
+                            {{ optionStatusLabel(status) }}
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
 
-        <!-- Create useForm (Deprecated - Using Wizard Instead) -->
+            <div>
+                <Label for="booking_filter_payment_status"
+                    >Payment Status</Label
+                >
+                <Select v-model="filtersForm.payment_status">
+                    <SelectTrigger
+                        id="booking_filter_payment_status"
+                        class="mt-1"
+                    >
+                        <SelectValue placeholder="Any payment status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Any payment status</SelectItem>
+                        <SelectItem
+                            v-for="paymentStatus in paymentStatuses"
+                            :key="paymentStatus"
+                            :value="paymentStatus"
+                        >
+                            {{ statusLabel(paymentStatus) }}
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+
+            <div>
+                <Label for="booking_filter_room">Room</Label>
+                <Select v-model="filtersForm.room_id">
+                    <SelectTrigger id="booking_filter_room" class="mt-1">
+                        <SelectValue placeholder="Any room" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Any room</SelectItem>
+                        <SelectItem
+                            v-for="room in rooms"
+                            :key="room.id"
+                            :value="String(room.id)"
+                        >
+                            Room {{ room.room_number }}
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <Label for="booking_filter_check_in_from"
+                        >Check-in From</Label
+                    >
+                    <Input
+                        id="booking_filter_check_in_from"
+                        v-model="filtersForm.check_in_from"
+                        type="date"
+                        class="mt-1"
+                    />
+                </div>
+                <div>
+                    <Label for="booking_filter_check_in_to">Check-in To</Label>
+                    <Input
+                        id="booking_filter_check_in_to"
+                        v-model="filtersForm.check_in_to"
+                        type="date"
+                        class="mt-1"
+                    />
+                </div>
+                <div>
+                    <Label for="booking_filter_check_out_from"
+                        >Check-out From</Label
+                    >
+                    <Input
+                        id="booking_filter_check_out_from"
+                        v-model="filtersForm.check_out_from"
+                        type="date"
+                        class="mt-1"
+                    />
+                </div>
+                <div>
+                    <Label for="booking_filter_check_out_to"
+                        >Check-out To</Label
+                    >
+                    <Input
+                        id="booking_filter_check_out_to"
+                        v-model="filtersForm.check_out_to"
+                        type="date"
+                        class="mt-1"
+                    />
+                </div>
+            </div>
+        </FilterSheet>
 
         <!-- Bookings List -->
         <div
@@ -783,9 +833,7 @@ const deleteBooking = () => {
                 "
             >
                 <CardContent class="p-0">
-                    <div
-                        class="grid gap-0 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.95fr)_auto]"
-                    >
+                    <div class="grid gap-0 lg:grid-cols-[1fr_auto]">
                         <div class="space-y-4 p-5 lg:p-6">
                             <div
                                 class="flex flex-wrap items-start justify-between gap-3"
@@ -884,6 +932,34 @@ const deleteBooking = () => {
                                             'Auto on save'
                                         }}
                                     </p>
+                                    <Badge
+                                        v-if="
+                                            booking.active_discount?.status ===
+                                            'pending'
+                                        "
+                                        class="mt-2 rounded-full bg-amber-100 text-amber-800"
+                                    >
+                                        Discount pending:
+                                        {{
+                                            discountLabel(
+                                                booking.active_discount,
+                                            )
+                                        }}
+                                    </Badge>
+                                    <Badge
+                                        v-else-if="
+                                            booking.active_discount?.status ===
+                                            'approved'
+                                        "
+                                        class="mt-2 rounded-full bg-green-100 text-green-800"
+                                    >
+                                        −{{
+                                            formatCurrency(
+                                                booking.active_discount.amount,
+                                            )
+                                        }}
+                                        discount
+                                    </Badge>
                                 </div>
 
                                 <div
@@ -939,93 +1015,21 @@ const deleteBooking = () => {
                                     }}
                                 </span>
                             </div>
-                        </div>
 
-                        <div
-                            class="border-t border-slate-200 bg-slate-50/70 p-5 lg:border-t-0 lg:border-l lg:p-6"
-                        >
-                            <div class="space-y-3">
-                                <div
-                                    class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
+                            <div
+                                v-if="booking.notes"
+                                class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200"
+                            >
+                                <p
+                                    class="text-xs font-medium tracking-wide text-slate-500 uppercase"
                                 >
-                                    <p
-                                        class="text-xs font-medium tracking-wide text-slate-500 uppercase"
-                                    >
-                                        Check-in / Check-out
-                                    </p>
-                                    <p
-                                        class="mt-1 text-sm font-semibold text-slate-900"
-                                    >
-                                        {{ formatDate(booking.check_in_date) }}
-                                    </p>
-                                    <p class="text-xs text-slate-500">
-                                        {{ formatDate(booking.check_out_date) }}
-                                    </p>
-                                </div>
-
-                                <div
-                                    class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
+                                    Notes
+                                </p>
+                                <p
+                                    class="mt-1 line-clamp-3 text-sm text-slate-600"
                                 >
-                                    <p
-                                        class="text-xs font-medium tracking-wide text-slate-500 uppercase"
-                                    >
-                                        Payment Status
-                                    </p>
-                                    <p
-                                        class="mt-1 text-sm font-semibold text-slate-900"
-                                    >
-                                        {{
-                                            statusLabel(
-                                                booking.invoice?.status ??
-                                                    'issued',
-                                            )
-                                        }}
-                                    </p>
-                                    <p class="text-xs text-slate-500">
-                                        Remaining balance updates automatically.
-                                    </p>
-                                </div>
-
-                                <div
-                                    class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
-                                >
-                                    <p
-                                        class="text-xs font-medium tracking-wide text-slate-500 uppercase"
-                                    >
-                                        Audit Trail
-                                    </p>
-                                    <p
-                                        class="mt-1 text-sm font-semibold text-slate-900"
-                                    >
-                                        Created by
-                                        {{ userLabel(booking.createdBy) }}
-                                    </p>
-                                    <p class="text-xs text-slate-500">
-                                        Last action by
-                                        {{
-                                            userLabel(
-                                                booking.updatedBy ??
-                                                    booking.createdBy,
-                                            )
-                                        }}
-                                    </p>
-                                </div>
-
-                                <div
-                                    v-if="booking.notes"
-                                    class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
-                                >
-                                    <p
-                                        class="text-xs font-medium tracking-wide text-slate-500 uppercase"
-                                    >
-                                        Notes
-                                    </p>
-                                    <p
-                                        class="mt-1 line-clamp-3 text-sm text-slate-600"
-                                    >
-                                        {{ booking.notes }}
-                                    </p>
-                                </div>
+                                    {{ booking.notes }}
+                                </p>
                             </div>
                         </div>
 
@@ -1057,6 +1061,48 @@ const deleteBooking = () => {
                                     <FileText class="h-4 w-4" />
                                     View Folio
                                 </Button>
+                                <Button
+                                    v-if="canRequestDiscount(booking)"
+                                    variant="outline"
+                                    size="sm"
+                                    class="h-10 w-full justify-start gap-2 rounded-xl"
+                                    @click="openDiscountDialog(booking)"
+                                >
+                                    <BadgePercent class="h-4 w-4" />
+                                    {{
+                                        booking.active_discount
+                                            ? 'Change Discount'
+                                            : 'Request Discount'
+                                    }}
+                                </Button>
+                                <template
+                                    v-if="
+                                        isAdmin &&
+                                        booking.active_discount?.status ===
+                                            'pending'
+                                    "
+                                >
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        class="h-10 w-full justify-start gap-2 rounded-xl border-green-200 text-green-700 hover:bg-green-50"
+                                        @click="approveBookingDiscount(booking)"
+                                    >
+                                        <Check class="h-4 w-4" />
+                                        Approve Discount
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        class="h-10 w-full justify-start gap-2 rounded-xl border-red-200 text-red-600 hover:bg-red-50"
+                                        @click="
+                                            openRejectDiscountDialog(booking)
+                                        "
+                                    >
+                                        <X class="h-4 w-4" />
+                                        Reject Discount
+                                    </Button>
+                                </template>
                                 <Button
                                     v-if="bookingBalance(booking) > 0"
                                     variant="outline"
@@ -1108,6 +1154,8 @@ const deleteBooking = () => {
                     </div>
                 </CardContent>
             </Card>
+
+            <Pagination :pagination="pagination" label="bookings" />
         </div>
 
         <!-- Empty State -->
@@ -1128,7 +1176,7 @@ const deleteBooking = () => {
                             : 'Create your first booking to track guest reservations'
                     }}
                 </p>
-                <Button @click="showCreateForm = true" class="gap-2">
+                <Button @click="showBookingWizard = true" class="gap-2">
                     <Plus class="h-4 w-4" />
                     New Booking
                 </Button>
@@ -1140,7 +1188,7 @@ const deleteBooking = () => {
             :open="showDeleteDialog"
             @update:open="showDeleteDialog = $event"
         >
-            <DialogContent>
+            <DialogContent class="max-h-[90dvh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Cancel Booking?</DialogTitle>
                     <DialogDescription>
@@ -1164,11 +1212,146 @@ const deleteBooking = () => {
             </DialogContent>
         </Dialog>
 
+        <!-- Request / change discount -->
+        <Dialog
+            :open="showDiscountDialog"
+            @update:open="showDiscountDialog = $event"
+        >
+            <DialogContent class="max-h-[90dvh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>Request Discount</DialogTitle>
+                    <DialogDescription>
+                        For
+                        <strong>{{ bookingToDiscount?.guest_name }}</strong
+                        >.
+                        <template v-if="!isAdmin">
+                            This will be sent to a manager for approval before
+                            it reduces the bill.
+                        </template>
+                        <template v-else>
+                            As a manager, this discount is applied immediately.
+                        </template>
+                    </DialogDescription>
+                </DialogHeader>
+                <form class="space-y-4" @submit.prevent="submitDiscount">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <Label>Type *</Label>
+                            <Select v-model="discountForm.type">
+                                <SelectTrigger class="mt-1">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="percentage">
+                                        Percentage (%)
+                                    </SelectItem>
+                                    <SelectItem value="fixed">
+                                        Fixed amount (₦)
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <InputError :message="discountForm.errors.type" />
+                        </div>
+                        <div>
+                            <Label>Value *</Label>
+                            <Input
+                                v-model="discountForm.value"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                class="mt-1"
+                                :placeholder="
+                                    discountForm.type === 'percentage'
+                                        ? 'e.g. 10'
+                                        : 'e.g. 5000'
+                                "
+                            />
+                            <InputError :message="discountForm.errors.value" />
+                        </div>
+                    </div>
+                    <div>
+                        <Label>Reason</Label>
+                        <Input
+                            v-model="discountForm.reason"
+                            type="text"
+                            class="mt-1"
+                            placeholder="e.g. Corporate rate, loyalty"
+                        />
+                        <InputError :message="discountForm.errors.reason" />
+                    </div>
+                    <div class="flex justify-end gap-3">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="showDiscountDialog = false"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="submit"
+                            :disabled="discountForm.processing"
+                        >
+                            {{
+                                isAdmin
+                                    ? 'Apply discount'
+                                    : 'Submit for approval'
+                            }}
+                        </Button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
+
+        <!-- Reject discount -->
+        <Dialog
+            :open="showRejectDiscountDialog"
+            @update:open="showRejectDiscountDialog = $event"
+        >
+            <DialogContent class="max-h-[90dvh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>Reject Discount?</DialogTitle>
+                    <DialogDescription>
+                        The guest will continue to owe the full amount.
+                    </DialogDescription>
+                </DialogHeader>
+                <form class="space-y-4" @submit.prevent="submitRejectDiscount">
+                    <div>
+                        <Label>Reason (optional)</Label>
+                        <Input
+                            v-model="rejectDiscountForm.review_notes"
+                            type="text"
+                            class="mt-1"
+                            placeholder="Why is it being rejected?"
+                        />
+                        <InputError
+                            :message="rejectDiscountForm.errors.review_notes"
+                        />
+                    </div>
+                    <div class="flex justify-end gap-3">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="showRejectDiscountDialog = false"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="submit"
+                            :disabled="rejectDiscountForm.processing"
+                            class="bg-red-600 hover:bg-red-700"
+                        >
+                            Reject
+                        </Button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
+
         <Dialog
             :open="showProcessPaymentDialog"
             @update:open="showProcessPaymentDialog = $event"
         >
-            <DialogContent>
+            <DialogContent class="max-h-[90dvh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Process Reservation Payment</DialogTitle>
                     <DialogDescription>
@@ -1195,12 +1378,15 @@ const deleteBooking = () => {
                             class="mt-2"
                         />
                         <p class="mt-2 text-xs text-gray-500">
-                            Remaining balance: ₦{{
-                                bookingToProcessPayment
-                                    ? bookingBalance(
-                                          bookingToProcessPayment,
-                                      ).toFixed(2)
-                                    : '0.00'
+                            Remaining balance:
+                            {{
+                                formatCurrency(
+                                    bookingToProcessPayment
+                                        ? bookingBalance(
+                                              bookingToProcessPayment,
+                                          )
+                                        : 0,
+                                )
                             }}
                         </p>
                     </div>
@@ -1278,7 +1464,7 @@ const deleteBooking = () => {
         </Dialog>
 
         <Dialog :open="showFolioDialog" @update:open="showFolioDialog = $event">
-            <DialogContent class="max-w-3xl">
+            <DialogContent class="max-h-[90dvh] max-w-3xl overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Guest Folio</DialogTitle>
                     <DialogDescription>
@@ -1615,7 +1801,7 @@ const deleteBooking = () => {
             :open="showCheckoutDialog"
             @update:open="showCheckoutDialog = $event"
         >
-            <DialogContent>
+            <DialogContent class="max-h-[90dvh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Check Out Guest</DialogTitle>
                     <DialogDescription>
@@ -1641,7 +1827,8 @@ const deleteBooking = () => {
                             class="mt-2"
                         />
                         <p class="mt-2 text-xs text-gray-500">
-                            Outstanding now: ₦{{ checkoutBalance.toFixed(2) }}
+                            Outstanding now:
+                            {{ formatCurrency(checkoutBalance) }}
                         </p>
                     </div>
 
@@ -1741,7 +1928,7 @@ const deleteBooking = () => {
             :open="showExtendStayDialog"
             @update:open="showExtendStayDialog = $event"
         >
-            <DialogContent>
+            <DialogContent class="max-h-[90dvh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Extend Stay</DialogTitle>
                     <DialogDescription>
@@ -1775,9 +1962,8 @@ const deleteBooking = () => {
                             {{ extensionPreview.extraNights }}
                         </p>
                         <p>
-                            Additional amount: ₦{{
-                                extensionPreview.extraAmount.toFixed(2)
-                            }}
+                            Additional amount:
+                            {{ formatCurrency(extensionPreview.extraAmount) }}
                         </p>
                     </div>
 

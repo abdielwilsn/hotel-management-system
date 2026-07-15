@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue';
 import { LogIn, LogOut, CreditCard, AlertCircle } from 'lucide-vue-next';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { computed } from 'vue';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useFormatters } from '@/lib/format';
 
 type Booking = {
     id: number;
@@ -39,7 +39,7 @@ type Props = {
 
 const props = defineProps<Props>();
 
-const emit = defineEmits<{
+defineEmits<{
     checkIn: [bookingId: number];
     checkOut: [bookingId: number];
     viewPayment: [bookingId: number];
@@ -51,6 +51,8 @@ const paymentCount = computed(() => props.pendingPayments.length);
 const totalTasks = computed(
     () => checkInCount.value + checkOutCount.value + paymentCount.value,
 );
+
+const { formatCurrency } = useFormatters();
 </script>
 
 <template>
@@ -135,9 +137,11 @@ const totalTasks = computed(
                     >
                         <div class="font-medium">{{ booking.guest_name }}</div>
                         <div v-if="booking.invoice" class="text-gray-600">
-                            ${{
-                                booking.invoice.total_amount -
-                                booking.invoice.paid_amount
+                            {{
+                                formatCurrency(
+                                    booking.invoice.total_amount -
+                                        booking.invoice.paid_amount,
+                                )
                             }}
                             due
                         </div>

@@ -12,25 +12,15 @@ import {
     Package,
     LayoutGrid,
     ReceiptText,
+    Store,
     UserRound,
     Users,
+    Wine,
 } from 'lucide-vue-next';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';
-import { index as departments } from '@/routes/departments';
-import { index as staff } from '@/routes/staff';
-import { index as rooms } from '@/routes/rooms';
-import { index as bookings } from '@/routes/bookings';
-import { index as invoices } from '@/routes/invoices';
-import { index as payments } from '@/routes/payments';
-import { index as expenses } from '@/routes/expenses';
-import { index as guests } from '@/routes/guests';
-import { index as inventory } from '@/routes/inventory';
-import { usageGuide } from '@/routes';
-import { index as reports } from '@/routes/reports';
-import { index as forecasts } from '@/routes/forecasts';
 import {
     Sidebar,
     SidebarContent,
@@ -40,7 +30,20 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { usageGuide } from '@/routes';
 import { dashboard } from '@/routes';
+import { index as bookings } from '@/routes/bookings';
+import { index as departments } from '@/routes/departments';
+import { index as expenses } from '@/routes/expenses';
+import { index as forecasts } from '@/routes/forecasts';
+import { index as guests } from '@/routes/guests';
+import { index as inventory } from '@/routes/inventory';
+import { index as invoices } from '@/routes/invoices';
+import { index as payments } from '@/routes/payments';
+import { index as pos, manage as posManage } from '@/routes/pos';
+import { index as reports } from '@/routes/reports';
+import { index as rooms } from '@/routes/rooms';
+import { index as staff } from '@/routes/staff';
 import type { NavItem } from '@/types';
 
 const page = usePage();
@@ -50,9 +53,19 @@ const isAdmin = computed(() => {
     return role === 'owner' || role === 'admin';
 });
 
-const dashboardUrl = computed(() =>
-    page.props.currentTeam ? dashboard(page.props.currentTeam.slug).url : '/',
-);
+// POS-only staff see nothing but the point of sale.
+const isPosStaff = computed(() => page.props.currentTeam?.role === 'pos');
+
+const dashboardUrl = computed(() => {
+    if (!page.props.currentTeam) {
+        return '/';
+    }
+
+    // POS-only staff can't open the dashboard, so their logo/home link goes to the POS.
+    return isPosStaff.value
+        ? pos(page.props.currentTeam.slug).url
+        : dashboard(page.props.currentTeam.slug).url;
+});
 
 const mainNavItems = computed<NavItem[]>(() => [
     {
@@ -173,13 +186,39 @@ const insightsNavItems = computed<NavItem[]>(() =>
           )
         : [],
 );
+
+const posNavItems = computed<NavItem[]>(() => {
+    if (!page.props.currentTeam) {
+        return [];
+    }
+
+    const slug = page.props.currentTeam.slug;
+
+    const items: NavItem[] = [
+        {
+            title: 'Point of Sale',
+            href: pos(slug).url,
+            icon: Wine,
+        },
+    ];
+
+    if (isAdmin.value) {
+        items.push({
+            title: 'POS Outlets',
+            href: posManage(slug).url,
+            icon: Store,
+        });
+    }
+
+    return items;
+});
 </script>
 
 <template>
     <Sidebar
         collapsible="icon"
         variant="inset"
-        class="[--sidebar-width-icon:70px] [--sidebar-width:260px] max-lg:[--sidebar-width:70px]"
+        class="[--sidebar-width-icon:70px] [--sidebar-width:260px]"
     >
         <SidebarHeader
             class="border-r border-sidebar-border/70 bg-sidebar/80 px-4 py-4 backdrop-blur-xl"
@@ -189,7 +228,7 @@ const insightsNavItems = computed<NavItem[]>(() =>
                     <SidebarMenuButton
                         size="lg"
                         as-child
-                        class="rounded-xl transition-colors duration-200 hover:bg-white/20 max-lg:justify-center"
+                        class="rounded-xl transition-colors duration-200 hover:bg-white/20"
                     >
                         <Link :href="dashboardUrl">
                             <AppLogo />
@@ -202,12 +241,19 @@ const insightsNavItems = computed<NavItem[]>(() =>
         <SidebarContent
             class="flex-1 overflow-y-auto border-r border-sidebar-border/70 bg-sidebar/75 py-4 backdrop-blur-xl"
         >
-            <NavMain label="Operations" :items="operationsNavItems" />
-            <NavMain label="Revenue" :items="revenueNavItems" />
+            <template v-if="!isPosStaff">
+                <NavMain label="Operations" :items="operationsNavItems" />
+                <NavMain label="Revenue" :items="revenueNavItems" />
+                <NavMain
+                    v-if="insightsNavItems.length > 0"
+                    label="Insights"
+                    :items="insightsNavItems"
+                />
+            </template>
             <NavMain
-                v-if="insightsNavItems.length > 0"
-                label="Insights"
-                :items="insightsNavItems"
+                v-if="posNavItems.length > 0"
+                label="Bar & Restaurant"
+                :items="posNavItems"
             />
         </SidebarContent>
 

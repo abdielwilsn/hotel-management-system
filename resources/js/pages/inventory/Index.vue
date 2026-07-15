@@ -9,18 +9,12 @@ import {
     Plus,
     Trash2,
 } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { destroy, edit, index, store } from '@/routes/inventory';
-import {
-    destroy as destroyCategory,
-    edit as editCategory,
-    store as storeCategory,
-} from '@/routes/inventory/categories';
 import {
     Dialog,
     DialogContent,
@@ -37,6 +31,13 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { useFormatters } from '@/lib/format';
+import { destroy, edit, index, store } from '@/routes/inventory';
+import {
+    destroy as destroyCategory,
+    edit as editCategory,
+    store as storeCategory,
+} from '@/routes/inventory/categories';
 
 type Summary = {
     categories: number;
@@ -139,14 +140,21 @@ defineOptions({
     }),
 });
 
-const formatCurrency = (value: number) =>
-    new Intl.NumberFormat('en-NG', {
-        style: 'currency',
-        currency: 'NGN',
-    }).format(Number(value));
+const { formatCurrency } = useFormatters();
 
 const labelize = (value: string) =>
     value.replace('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+
+const summaryCards = computed(() => [
+    { label: 'Categories', value: String(props.summary.categories) },
+    { label: 'Items', value: String(props.summary.items) },
+    { label: 'Stock records', value: String(props.summary.stock_records) },
+    { label: 'Sales records', value: String(props.summary.sales_records) },
+    {
+        label: 'Total sales value',
+        value: formatCurrency(props.summary.sales_value),
+    },
+]);
 
 const submit = () => {
     form.post(store(props.team.slug).url, {
@@ -382,56 +390,23 @@ const deleteCategory = () => {
             </CardContent>
         </Card>
 
-        <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <Card class="bg-white/90">
-                <CardHeader class="pb-2">
-                    <CardTitle class="text-sm text-muted-foreground"
-                        >Categories</CardTitle
+        <section class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-5">
+            <Card
+                v-for="card in summaryCards"
+                :key="card.label"
+                class="gap-1 bg-white/90 py-4 sm:gap-2 sm:py-6"
+            >
+                <CardHeader class="px-4 pb-0 sm:px-6 sm:pb-2">
+                    <CardTitle
+                        class="text-xs text-muted-foreground sm:text-sm"
+                        >{{ card.label }}</CardTitle
                     >
                 </CardHeader>
-                <CardContent class="text-3xl font-semibold">{{
-                    summary.categories
-                }}</CardContent>
-            </Card>
-            <Card class="bg-white/90">
-                <CardHeader class="pb-2">
-                    <CardTitle class="text-sm text-muted-foreground"
-                        >Items</CardTitle
-                    >
-                </CardHeader>
-                <CardContent class="text-3xl font-semibold">{{
-                    summary.items
-                }}</CardContent>
-            </Card>
-            <Card class="bg-white/90">
-                <CardHeader class="pb-2">
-                    <CardTitle class="text-sm text-muted-foreground"
-                        >Stock records</CardTitle
-                    >
-                </CardHeader>
-                <CardContent class="text-3xl font-semibold">{{
-                    summary.stock_records
-                }}</CardContent>
-            </Card>
-            <Card class="bg-white/90">
-                <CardHeader class="pb-2">
-                    <CardTitle class="text-sm text-muted-foreground"
-                        >Sales records</CardTitle
-                    >
-                </CardHeader>
-                <CardContent class="text-3xl font-semibold">{{
-                    summary.sales_records
-                }}</CardContent>
-            </Card>
-            <Card class="bg-white/90">
-                <CardHeader class="pb-2">
-                    <CardTitle class="text-sm text-muted-foreground"
-                        >Total sales value</CardTitle
-                    >
-                </CardHeader>
-                <CardContent class="text-2xl font-semibold">{{
-                    formatCurrency(summary.sales_value)
-                }}</CardContent>
+                <CardContent
+                    class="px-4 text-xl font-semibold wrap-break-word sm:px-6 sm:text-2xl"
+                >
+                    {{ card.value }}
+                </CardContent>
             </Card>
         </section>
 
@@ -497,6 +472,7 @@ const deleteCategory = () => {
                                                 category.id,
                                             ]).url
                                         "
+                                        :aria-label="`Edit ${category.name} category`"
                                     >
                                         <Edit class="size-3.5" />
                                     </Link>
@@ -504,6 +480,7 @@ const deleteCategory = () => {
                                 <Button
                                     variant="destructive"
                                     size="sm"
+                                    :aria-label="`Delete ${category.name} category`"
                                     @click="
                                         categoryToDelete = category;
                                         showDeleteCategoryDialog = true;
@@ -549,15 +526,21 @@ const deleteCategory = () => {
                         <div
                             v-for="item in items"
                             :key="item.id"
-                            class="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 rounded-lg border px-3 py-2"
+                            class="grid grid-cols-[1fr_auto_auto] items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2 sm:grid-cols-[1fr_auto_auto_auto]"
                         >
-                            <div>
-                                <p class="font-medium">{{ item.name }}</p>
-                                <p class="text-xs text-muted-foreground">
+                            <div class="min-w-0">
+                                <p class="truncate font-medium">
+                                    {{ item.name }}
+                                </p>
+                                <p
+                                    class="truncate text-xs text-muted-foreground"
+                                >
                                     {{ item.category.name }}
                                 </p>
                             </div>
-                            <p class="text-sm text-muted-foreground">
+                            <p
+                                class="order-3 text-sm text-muted-foreground sm:order-0"
+                            >
                                 {{ item.unit }}
                             </p>
                             <p class="text-sm font-semibold">
@@ -567,6 +550,7 @@ const deleteCategory = () => {
                                 <Button variant="outline" size="sm" as-child>
                                     <Link
                                         :href="edit([team.slug, item.id]).url"
+                                        :aria-label="`Edit ${item.name}`"
                                     >
                                         <Edit class="size-3.5" />
                                     </Link>
@@ -574,6 +558,7 @@ const deleteCategory = () => {
                                 <Button
                                     variant="destructive"
                                     size="sm"
+                                    :aria-label="`Delete ${item.name}`"
                                     @click="
                                         itemToDelete = item;
                                         showDeleteDialog = true;

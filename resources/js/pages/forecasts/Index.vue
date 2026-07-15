@@ -9,6 +9,7 @@ import {
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useFormatters } from '@/lib/format';
 import { index } from '@/routes/forecasts';
 
 type Forecast = {
@@ -47,11 +48,7 @@ defineOptions({
     }),
 });
 
-const formatCurrency = (value: number) =>
-    new Intl.NumberFormat('en-NG', {
-        style: 'currency',
-        currency: 'NGN',
-    }).format(value);
+const { formatCurrency } = useFormatters();
 </script>
 
 <template>

@@ -2,6 +2,7 @@
 import { useForm, Link, router } from '@inertiajs/vue3';
 import { Plus, Home, Trash2, Edit, CalendarPlus } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
+import FilterSheet from '@/components/FilterSheet.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +24,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { useFormatters } from '@/lib/format';
 import { store as storeBooking } from '@/routes/bookings';
 import { index, store, edit, destroy } from '@/routes/rooms';
 import type { Team } from '@/types';
@@ -71,6 +73,8 @@ type Props = {
 };
 
 const props = defineProps<Props>();
+
+const { formatCurrency } = useFormatters();
 
 defineOptions({
     layout: (props: { currentTeam?: Team | null }) => ({
@@ -146,15 +150,34 @@ const filterStatuses = computed(() => [
     'cleaning',
 ]);
 
-const hasActiveFilters = computed(() =>
-    Boolean(
-        filtersForm.search ||
-        filtersForm.room_type !== 'all' ||
-        filtersForm.status !== 'all' ||
-        filtersForm.floor ||
-        filtersForm.min_capacity ||
-        filtersForm.max_price,
-    ),
+const occupancyCards = computed(() => [
+    {
+        label: 'Currently Occupied Rooms',
+        value: props.occupancySummary.occupied_rooms,
+    },
+    {
+        label: 'Reserved Rooms (Today)',
+        value: props.occupancySummary.reserved_rooms,
+    },
+    {
+        label: 'Checked-in Bookings',
+        value: props.occupancySummary.checked_in_bookings,
+    },
+    {
+        label: 'Active Reservations (Today)',
+        value: props.occupancySummary.active_reservations,
+    },
+]);
+
+// Advanced filters shown inside the drawer (search stays inline, so it is
+// excluded from the badge count).
+const activeFilterCount = computed(
+    () =>
+        (filtersForm.room_type !== 'all' ? 1 : 0) +
+        (filtersForm.status !== 'all' ? 1 : 0) +
+        (filtersForm.floor ? 1 : 0) +
+        (filtersForm.min_capacity ? 1 : 0) +
+        (filtersForm.max_price ? 1 : 0),
 );
 
 const roomTypeLabel = (type: string) => {
@@ -296,166 +319,115 @@ const createBookingForRoom = () => {
             description="Manage your hotel rooms and availability"
         />
 
-        <Card>
-            <CardHeader>
-                <CardTitle>Filter Rooms</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <form @submit.prevent="applyFilters" class="space-y-4">
-                    <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
-                        <div class="md:col-span-2">
-                            <Label for="room_filter_search">Search</Label>
-                            <Input
-                                id="room_filter_search"
-                                v-model="filtersForm.search"
-                                class="mt-1"
-                                placeholder="Room number, description, guest"
-                            />
-                        </div>
+        <FilterSheet
+            title="Filter Rooms"
+            description="Narrow rooms by type, status, floor, capacity, and price."
+            :active-count="activeFilterCount"
+            @apply="applyFilters"
+            @clear="clearFilters"
+        >
+            <template #search>
+                <Input
+                    id="room_filter_search"
+                    v-model="filtersForm.search"
+                    placeholder="Search room number, description, guest…"
+                    aria-label="Search rooms"
+                    @keyup.enter="applyFilters"
+                />
+            </template>
 
-                        <div>
-                            <Label for="room_filter_type">Room Type</Label>
-                            <Select v-model="filtersForm.room_type">
-                                <SelectTrigger
-                                    id="room_filter_type"
-                                    class="mt-1"
-                                >
-                                    <SelectValue placeholder="Any type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all"
-                                        >Any type</SelectItem
-                                    >
-                                    <SelectItem
-                                        v-for="type in roomTypes"
-                                        :key="type"
-                                        :value="type"
-                                    >
-                                        {{ roomTypeLabel(type) }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div>
-                            <Label for="room_filter_status">Status</Label>
-                            <Select v-model="filtersForm.status">
-                                <SelectTrigger
-                                    id="room_filter_status"
-                                    class="mt-1"
-                                >
-                                    <SelectValue placeholder="Any status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all"
-                                        >Any status</SelectItem
-                                    >
-                                    <SelectItem
-                                        v-for="status in filterStatuses"
-                                        :key="status"
-                                        :value="status"
-                                    >
-                                        {{ statusLabel(status) }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div>
-                            <Label for="room_filter_floor">Floor</Label>
-                            <Input
-                                id="room_filter_floor"
-                                v-model="filtersForm.floor"
-                                type="number"
-                                min="1"
-                                step="1"
-                                class="mt-1"
-                            />
-                        </div>
-
-                        <div>
-                            <Label for="room_filter_min_capacity"
-                                >Min Capacity</Label
-                            >
-                            <Input
-                                id="room_filter_min_capacity"
-                                v-model="filtersForm.min_capacity"
-                                type="number"
-                                min="1"
-                                step="1"
-                                class="mt-1"
-                            />
-                        </div>
-
-                        <div>
-                            <Label for="room_filter_max_price"
-                                >Max Price / Night</Label
-                            >
-                            <Input
-                                id="room_filter_max_price"
-                                v-model="filtersForm.max_price"
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                class="mt-1"
-                            />
-                        </div>
-                    </div>
-
-                    <div class="flex items-center gap-2">
-                        <Button type="submit">Apply Filters</Button>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            :disabled="!hasActiveFilters"
-                            @click="clearFilters"
+            <div>
+                <Label for="room_filter_type">Room Type</Label>
+                <Select v-model="filtersForm.room_type">
+                    <SelectTrigger id="room_filter_type" class="mt-1">
+                        <SelectValue placeholder="Any type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Any type</SelectItem>
+                        <SelectItem
+                            v-for="type in roomTypes"
+                            :key="type"
+                            :value="type"
                         >
-                            Clear
-                        </Button>
-                    </div>
-                </form>
-            </CardContent>
-        </Card>
+                            {{ roomTypeLabel(type) }}
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
 
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card>
-                <CardHeader class="pb-2">
-                    <CardTitle class="text-sm text-muted-foreground"
-                        >Currently Occupied Rooms</CardTitle
+            <div>
+                <Label for="room_filter_status">Status</Label>
+                <Select v-model="filtersForm.status">
+                    <SelectTrigger id="room_filter_status" class="mt-1">
+                        <SelectValue placeholder="Any status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Any status</SelectItem>
+                        <SelectItem
+                            v-for="status in filterStatuses"
+                            :key="status"
+                            :value="status"
+                        >
+                            {{ statusLabel(status) }}
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <Label for="room_filter_floor">Floor</Label>
+                    <Input
+                        id="room_filter_floor"
+                        v-model="filtersForm.floor"
+                        type="number"
+                        min="1"
+                        step="1"
+                        class="mt-1"
+                    />
+                </div>
+                <div>
+                    <Label for="room_filter_min_capacity">Min Capacity</Label>
+                    <Input
+                        id="room_filter_min_capacity"
+                        v-model="filtersForm.min_capacity"
+                        type="number"
+                        min="1"
+                        step="1"
+                        class="mt-1"
+                    />
+                </div>
+            </div>
+
+            <div>
+                <Label for="room_filter_max_price">Max Price / Night</Label>
+                <Input
+                    id="room_filter_max_price"
+                    v-model="filtersForm.max_price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="mt-1"
+                />
+            </div>
+        </FilterSheet>
+
+        <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            <Card
+                v-for="card in occupancyCards"
+                :key="card.label"
+                class="gap-1 py-4 sm:gap-2 sm:py-6"
+            >
+                <CardHeader class="px-4 pb-0 sm:px-6 sm:pb-2">
+                    <CardTitle
+                        class="text-xs text-muted-foreground sm:text-sm"
+                        >{{ card.label }}</CardTitle
                     >
                 </CardHeader>
-                <CardContent class="text-3xl font-semibold">
-                    {{ occupancySummary.occupied_rooms }}
-                </CardContent>
-            </Card>
-            <Card>
-                <CardHeader class="pb-2">
-                    <CardTitle class="text-sm text-muted-foreground"
-                        >Reserved Rooms (Today)</CardTitle
-                    >
-                </CardHeader>
-                <CardContent class="text-3xl font-semibold">
-                    {{ occupancySummary.reserved_rooms }}
-                </CardContent>
-            </Card>
-            <Card>
-                <CardHeader class="pb-2">
-                    <CardTitle class="text-sm text-muted-foreground"
-                        >Checked-in Bookings</CardTitle
-                    >
-                </CardHeader>
-                <CardContent class="text-3xl font-semibold">
-                    {{ occupancySummary.checked_in_bookings }}
-                </CardContent>
-            </Card>
-            <Card>
-                <CardHeader class="pb-2">
-                    <CardTitle class="text-sm text-muted-foreground"
-                        >Active Reservations (Today)</CardTitle
-                    >
-                </CardHeader>
-                <CardContent class="text-3xl font-semibold">
-                    {{ occupancySummary.active_reservations }}
+                <CardContent
+                    class="px-4 text-2xl font-semibold sm:px-6 sm:text-3xl"
+                >
+                    {{ card.value }}
                 </CardContent>
             </Card>
         </div>
@@ -661,8 +633,7 @@ const createBookingForRoom = () => {
                         </p>
                         <p>
                             <strong>Price:</strong>
-                            ₦{{ Number(room.price_per_night).toFixed(2) }} /
-                            night
+                            {{ formatCurrency(room.price_per_night) }} / night
                         </p>
                         <p v-if="room.description">
                             <strong>Description:</strong>
@@ -812,7 +783,7 @@ const createBookingForRoom = () => {
             :open="showBookRoomDialog"
             @update:open="showBookRoomDialog = $event"
         >
-            <DialogContent>
+            <DialogContent class="max-h-[90dvh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Create Booking</DialogTitle>
                     <DialogDescription>

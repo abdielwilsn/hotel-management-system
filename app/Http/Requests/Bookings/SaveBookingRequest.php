@@ -19,6 +19,14 @@ class SaveBookingRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        // Treat blank discount fields (e.g. the "No discount" option) as absent.
+        if (blank($this->input('discount_type'))) {
+            $this->merge(['discount_type' => null, 'discount_value' => null]);
+        }
+    }
+
     /**
      * Get the validation rules that apply to the request.
      *
@@ -41,6 +49,9 @@ class SaveBookingRequest extends FormRequest
             'check_out_date' => ['required', 'date', 'after:check_in_date'],
             'status' => ['required', 'in:pending,confirmed,checked_in,checked_out,cancelled'],
             'notes' => ['nullable', 'string', 'max:1000'],
+            'discount_type' => ['nullable', 'required_with:discount_value', Rule::in(['percentage', 'fixed'])],
+            'discount_value' => ['nullable', 'required_with:discount_type', 'numeric', 'gt:0', 'max:99999999.99'],
+            'discount_reason' => ['nullable', 'string', 'max:255'],
             'process_payment' => ['nullable', 'boolean'],
             'payment_amount' => ['nullable', 'numeric', 'min:0.01'],
             'payment_method' => ['nullable', 'in:cash,card,bank_transfer,online,other'],
@@ -107,6 +118,18 @@ class SaveBookingRequest extends FormRequest
                                 'This room is already booked for the selected dates.',
                             );
                         }
+                    }
+                }
+
+                if ($this->filled('discount_type') && $this->filled('discount_value')) {
+                    $discountValue = (float) $this->input('discount_value');
+
+                    if ($this->input('discount_type') === 'percentage' && $discountValue > 100) {
+                        $validator->errors()->add('discount_value', 'A percentage discount cannot exceed 100%.');
+                    }
+
+                    if ($this->input('discount_type') === 'fixed' && isset($calculatedTotal) && $discountValue > $calculatedTotal) {
+                        $validator->errors()->add('discount_value', 'The discount cannot exceed the booking total.');
                     }
                 }
 

@@ -12,6 +12,8 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Room;
 use App\Models\Team;
+use App\Support\BookingDiscountService;
+use App\Support\PaginationMeta;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -45,6 +47,8 @@ class BookingController extends Controller
                 'room',
                 'createdBy:id,name',
                 'updatedBy:id,name',
+                'activeDiscount.requestedBy:id,name',
+                'activeDiscount.reviewedBy:id,name',
                 'invoice' => function ($query): void {
                     $query->select([
                         'invoices.id',
@@ -139,12 +143,14 @@ class BookingController extends Controller
                 });
             })
             ->orderByDesc('check_in_date')
-            ->get()
-            ->map(function (Booking $booking): Booking {
-                $booking->setAttribute('extension_history', $this->extensionHistoryFromNotes($booking->notes));
+            ->paginate(20)
+            ->withQueryString();
 
-                return $booking;
-            });
+        $bookings->getCollection()->transform(function (Booking $booking): Booking {
+            $booking->setAttribute('extension_history', $this->extensionHistoryFromNotes($booking->notes));
+
+            return $booking;
+        });
 
         $today = Carbon::today()->toDateString();
 
@@ -217,7 +223,8 @@ class BookingController extends Controller
             ->get(['id', 'room_id', 'guest_name', 'check_in_date', 'check_out_date', 'status']);
 
         return Inertia::render('bookings/Index', [
-            'bookings' => $bookings,
+            'bookings' => $bookings->items(),
+            'pagination' => PaginationMeta::from($bookings),
             'rooms' => $rooms,
             'statuses' => $statuses,
             'paymentStatuses' => ['unpaid', 'partial', 'paid'],
@@ -244,11 +251,11 @@ class BookingController extends Controller
         ]);
     }
 
-    public function store(SaveBookingRequest $request, Team $current_team): RedirectResponse
+    public function store(SaveBookingRequest $request, Team $current_team, BookingDiscountService $discounts): RedirectResponse
     {
         Gate::authorize('create', [Booking::class, $current_team]);
 
-        $booking = DB::transaction(function () use ($request, $current_team): Booking {
+        $booking = DB::transaction(function () use ($request, $current_team, $discounts): Booking {
             $data = $request->validated();
             $processPayment = (bool) ($data['process_payment'] ?? false);
             $actorId = $request->user()?->id;
@@ -282,6 +289,16 @@ class BookingController extends Controller
             }
 
             $invoice = $this->syncBookingInvoice($current_team, $booking);
+
+            if (! empty($data['discount_type']) && ! empty($data['discount_value']) && $request->user()) {
+                $discounts->request($current_team, $booking, $request->user(), [
+                    'type' => (string) $data['discount_type'],
+                    'value' => $data['discount_value'],
+                    'reason' => $data['discount_reason'] ?? null,
+                ]);
+
+                $invoice = $invoice->fresh();
+            }
 
             if ($processPayment) {
                 $this->recordPayment(
@@ -516,6 +533,10 @@ class BookingController extends Controller
 
     private function syncBookingInvoice(Team $team, Booking $booking): Invoice
     {
+        $subtotal = round((float) $booking->total_amount, 2);
+        $discountAmount = $this->approvedDiscountAmount($booking, $subtotal);
+        $totalAmount = round(max($subtotal - $discountAmount, 0), 2);
+
         /** @var Invoice $invoice */
         $invoice = $team->invoices()->firstOrCreate(
             ['booking_id' => $booking->id],
@@ -525,10 +546,10 @@ class BookingController extends Controller
                 'guest_email' => $booking->guest_email,
                 'issue_date' => Carbon::today()->toDateString(),
                 'due_date' => Carbon::parse($booking->check_in_date)->toDateString(),
-                'subtotal' => $booking->total_amount,
+                'subtotal' => $subtotal,
                 'tax_amount' => 0,
-                'discount_amount' => 0,
-                'total_amount' => $booking->total_amount,
+                'discount_amount' => $discountAmount,
+                'total_amount' => $totalAmount,
                 'paid_amount' => 0,
                 'status' => 'issued',
                 'notes' => 'Auto-generated from booking.',
@@ -539,11 +560,23 @@ class BookingController extends Controller
             'guest_name' => $booking->guest_name,
             'guest_email' => $booking->guest_email,
             'due_date' => Carbon::parse($booking->check_out_date)->toDateString(),
-            'subtotal' => $booking->total_amount,
-            'total_amount' => $booking->total_amount,
+            'subtotal' => $subtotal,
+            'discount_amount' => $discountAmount,
+            'total_amount' => $totalAmount,
         ]);
 
         return $invoice;
+    }
+
+    /**
+     * The currency value of the booking's approved discount, computed live so that a
+     * percentage discount keeps tracking the subtotal (e.g. after a stay extension).
+     */
+    private function approvedDiscountAmount(Booking $booking, float $subtotal): float
+    {
+        $discount = $booking->approvedDiscount()->first();
+
+        return $discount ? $discount->computeAmount($subtotal) : 0.0;
     }
 
     /**
@@ -575,22 +608,9 @@ class BookingController extends Controller
             ->where('status', 'completed')
             ->sum('amount');
 
-        $totalAmount = (float) $invoice->total_amount;
-        $status = $invoice->status;
-
-        if ($paidAmount <= 0 && $status !== 'void') {
-            $status = 'issued';
-        } elseif ($paidAmount > 0 && $paidAmount < $totalAmount) {
-            $status = 'partially_paid';
-        }
-
-        if ($paidAmount >= $totalAmount && $totalAmount > 0) {
-            $status = 'paid';
-        }
-
         $invoice->update([
             'paid_amount' => round($paidAmount, 2),
-            'status' => $status,
+            'status' => $invoice->statusFor($paidAmount),
         ]);
     }
 

@@ -46,6 +46,19 @@ type Props = {
 
 const props = defineProps<Props>();
 
+const currencyOptions = [
+    { code: 'NGN', label: 'Nigerian Naira' },
+    { code: 'USD', label: 'US Dollar' },
+    { code: 'EUR', label: 'Euro' },
+    { code: 'GBP', label: 'British Pound' },
+    { code: 'GHS', label: 'Ghanaian Cedi' },
+    { code: 'KES', label: 'Kenyan Shilling' },
+    { code: 'ZAR', label: 'South African Rand' },
+    { code: 'XOF', label: 'West African CFA Franc' },
+    { code: 'CAD', label: 'Canadian Dollar' },
+    { code: 'AUD', label: 'Australian Dollar' },
+];
+
 defineOptions({
     layout: (props: { team: Team }) => ({
         breadcrumbs: [
@@ -123,6 +136,28 @@ const confirmCancelInvitation = (invitation: TeamInvitation) => {
                         required
                     />
                     <InputError :message="errors.name" />
+                </div>
+
+                <div class="grid gap-2">
+                    <Label for="currency">Currency</Label>
+                    <select
+                        id="currency"
+                        name="currency"
+                        :value="team.currency ?? 'NGN'"
+                        class="border-input bg-background focus-visible:ring-ring h-9 w-full rounded-md border px-3 py-1 text-sm shadow-sm focus-visible:ring-1 focus-visible:outline-none"
+                    >
+                        <option
+                            v-for="option in currencyOptions"
+                            :key="option.code"
+                            :value="option.code"
+                        >
+                            {{ option.code }} — {{ option.label }}
+                        </option>
+                    </select>
+                    <p class="text-xs text-muted-foreground">
+                        Used to display all prices, invoices, and receipts.
+                    </p>
+                    <InputError :message="errors.currency" />
                 </div>
 
                 <div class="flex items-center gap-4">

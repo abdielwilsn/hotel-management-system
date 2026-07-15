@@ -64,7 +64,7 @@ const deleteDepartment = () => {
 
     <h1 class="sr-only">Edit Department</h1>
 
-    <div class="space-y-8 p-4">
+    <div class="space-y-6 p-0 sm:space-y-8 sm:p-4">
         <Heading
             variant="small"
             title="Department settings"
@@ -149,7 +149,9 @@ const deleteDepartment = () => {
                         <InputError :message="errors.manager_id" />
                     </div>
 
-                    <div class="flex items-center gap-3 md:col-span-2">
+                    <div
+                        class="flex flex-wrap items-center gap-3 md:col-span-2"
+                    >
                         <Button :disabled="processing" type="submit">
                             Save changes
                         </Button>

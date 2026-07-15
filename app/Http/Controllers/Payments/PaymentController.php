@@ -7,6 +7,7 @@ use App\Http\Requests\Payments\SavePaymentRequest;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Team;
+use App\Support\PaginationMeta;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -74,7 +75,8 @@ class PaymentController extends Controller
             })
             ->orderByDesc('payment_date')
             ->orderByDesc('id')
-            ->get();
+            ->paginate(20)
+            ->withQueryString();
 
         $invoices = $current_team->invoices()
             ->orderByDesc('issue_date')
@@ -84,7 +86,8 @@ class PaymentController extends Controller
         $statuses = ['pending', 'completed', 'failed', 'refunded'];
 
         return Inertia::render('payments/Index', [
-            'payments' => $payments,
+            'payments' => $payments->items(),
+            'pagination' => PaginationMeta::from($payments),
             'invoices' => $invoices,
             'methods' => $methods,
             'statuses' => $statuses,

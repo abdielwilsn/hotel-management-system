@@ -11,6 +11,19 @@ class DashboardController extends Controller
 {
     public function index(Team $current_team): Response
     {
+        return Inertia::render('Dashboard', [
+            // Deferred so the dashboard shell paints immediately; the eight
+            // aggregate queries then stream in behind a skeleton.
+            'metricCards' => Inertia::defer(fn () => $this->metricCards($current_team)),
+            'team' => $current_team->only('id', 'slug', 'name'),
+        ]);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function metricCards(Team $current_team): array
+    {
         $today = now();
 
         $currentWeekStart = $today->copy()->startOfWeek();
@@ -62,36 +75,33 @@ class DashboardController extends Controller
             ->whereBetween('created_at', [$previousMonthStart->startOfDay(), $previousComparableEnd])
             ->sum('total_amount');
 
-        return Inertia::render('Dashboard', [
-            'metricCards' => [
-                [
-                    'title' => 'New Bookings',
-                    'value' => $newBookings,
-                    'delta' => $this->delta($newBookings, $newBookingsPrevious),
-                    'hint' => 'vs last week',
-                ],
-                [
-                    'title' => 'Current Check-ins',
-                    'value' => $checkInsThisWeek,
-                    'delta' => $this->delta($checkInsThisWeek, $checkInsPreviousWeek),
-                    'hint' => 'check-ins this week',
-                ],
-                [
-                    'title' => 'Check-outs Today',
-                    'value' => $checkOutsToday,
-                    'delta' => $this->delta($checkOutsToday, $checkOutsYesterday),
-                    'hint' => 'expected departures',
-                ],
-                [
-                    'title' => 'Revenue (MTD)',
-                    'value' => round($revenueMtd, 2),
-                    'delta' => $this->delta($revenueMtd, $revenuePreviousMtd),
-                    'hint' => 'compared to prior month pace',
-                    'currency' => true,
-                ],
+        return [
+            [
+                'title' => 'New Bookings',
+                'value' => $newBookings,
+                'delta' => $this->delta($newBookings, $newBookingsPrevious),
+                'hint' => 'vs last week',
             ],
-            'team' => $current_team->only('id', 'slug', 'name'),
-        ]);
+            [
+                'title' => 'Current Check-ins',
+                'value' => $checkInsThisWeek,
+                'delta' => $this->delta($checkInsThisWeek, $checkInsPreviousWeek),
+                'hint' => 'check-ins this week',
+            ],
+            [
+                'title' => 'Check-outs Today',
+                'value' => $checkOutsToday,
+                'delta' => $this->delta($checkOutsToday, $checkOutsYesterday),
+                'hint' => 'expected departures',
+            ],
+            [
+                'title' => 'Revenue (MTD)',
+                'value' => round($revenueMtd, 2),
+                'delta' => $this->delta($revenueMtd, $revenuePreviousMtd),
+                'hint' => 'compared to prior month pace',
+                'currency' => true,
+            ],
+        ];
     }
 
     private function delta(float|int $current, float|int $previous): string

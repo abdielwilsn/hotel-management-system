@@ -2,8 +2,11 @@
 import { useForm, Link, usePage, router } from '@inertiajs/vue3';
 import { Edit, Plus, Star, Trash2, UserRound } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
+import FilterSheet from '@/components/FilterSheet.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import Pagination from '@/components/Pagination.vue';
+import type { PaginationMeta } from '@/components/Pagination.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,6 +43,7 @@ type Guest = {
 
 type Props = {
     guests: Guest[];
+    pagination: PaginationMeta;
     tiers: string[];
     filters: {
         search?: string | null;
@@ -123,6 +127,19 @@ const hasActiveFilters = computed(() =>
         filtersForm.has_email !== 'all' ||
         filtersForm.has_phone !== 'all',
     ),
+);
+
+// Advanced filters shown inside the drawer (search stays inline, so it is
+// excluded from the badge count).
+const activeFilterCount = computed(
+    () =>
+        (filtersForm.loyalty_tier !== 'all' ? 1 : 0) +
+        (filtersForm.has_email !== 'all' ? 1 : 0) +
+        (filtersForm.has_phone !== 'all' ? 1 : 0) +
+        (filtersForm.last_stay_from ? 1 : 0) +
+        (filtersForm.last_stay_to ? 1 : 0) +
+        (filtersForm.min_loyalty_points ? 1 : 0) +
+        (filtersForm.max_loyalty_points ? 1 : 0),
 );
 
 const applyFilters = () => {
@@ -220,6 +237,10 @@ const guestPointsTone = (guest: Guest) => {
 const guestContactLabel = (guest: Guest) =>
     guest.email || guest.phone || 'No contact details';
 
+const guestInitials = (guest: Guest) =>
+    `${guest.first_name?.[0] ?? ''}${guest.last_name?.[0] ?? ''}`.toUpperCase() ||
+    '?';
+
 const guestStayLabel = (guest: Guest) =>
     guest.last_stay_date ?? 'No recorded stay';
 
@@ -233,6 +254,14 @@ const tierCounts = computed(() => {
         {} as Record<string, number>,
     );
 });
+
+const guestSummaryCards = computed(() => [
+    { label: 'Total guests', value: props.guests.length },
+    ...props.tiers.map((tier) => ({
+        label: labelize(tier),
+        value: tierCounts.value[tier] || 0,
+    })),
+]);
 
 const submit = () => {
     form.post(store(props.team.slug).url, {
@@ -266,172 +295,135 @@ const deleteGuest = () => {
             description="Manage profiles, loyalty levels, and repeat stays"
         />
 
-        <Card>
-            <CardHeader>
-                <CardTitle>Filter Guests</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <form @submit.prevent="applyFilters" class="space-y-4">
-                    <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
-                        <div class="md:col-span-2">
-                            <Label for="guest_filter_search">Search</Label>
-                            <Input
-                                id="guest_filter_search"
-                                v-model="filtersForm.search"
-                                class="mt-1"
-                                placeholder="Name, email, phone"
-                            />
-                        </div>
+        <FilterSheet
+            title="Filter Guests"
+            description="Narrow the directory by tier, contact details, and loyalty."
+            :active-count="activeFilterCount"
+            @apply="applyFilters"
+            @clear="clearFilters"
+        >
+            <template #search>
+                <Input
+                    id="guest_filter_search"
+                    v-model="filtersForm.search"
+                    placeholder="Search name, email, phone…"
+                    aria-label="Search guests"
+                    @keyup.enter="applyFilters"
+                />
+            </template>
 
-                        <div>
-                            <Label for="guest_filter_tier">Tier</Label>
-                            <Select v-model="filtersForm.loyalty_tier">
-                                <SelectTrigger
-                                    id="guest_filter_tier"
-                                    class="mt-1"
-                                >
-                                    <SelectValue placeholder="Any tier" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all"
-                                        >Any tier</SelectItem
-                                    >
-                                    <SelectItem
-                                        v-for="tier in tiers"
-                                        :key="tier"
-                                        :value="tier"
-                                    >
-                                        {{ labelize(tier) }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div>
-                            <Label for="guest_filter_has_email"
-                                >Has Email</Label
-                            >
-                            <Select v-model="filtersForm.has_email">
-                                <SelectTrigger
-                                    id="guest_filter_has_email"
-                                    class="mt-1"
-                                >
-                                    <SelectValue placeholder="Any" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">Any</SelectItem>
-                                    <SelectItem value="yes">Yes</SelectItem>
-                                    <SelectItem value="no">No</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div>
-                            <Label for="guest_filter_last_stay_from"
-                                >Last Stay From</Label
-                            >
-                            <Input
-                                id="guest_filter_last_stay_from"
-                                v-model="filtersForm.last_stay_from"
-                                type="date"
-                                class="mt-1"
-                            />
-                        </div>
-
-                        <div>
-                            <Label for="guest_filter_last_stay_to"
-                                >Last Stay To</Label
-                            >
-                            <Input
-                                id="guest_filter_last_stay_to"
-                                v-model="filtersForm.last_stay_to"
-                                type="date"
-                                class="mt-1"
-                            />
-                        </div>
-
-                        <div>
-                            <Label for="guest_filter_min_points"
-                                >Min Loyalty Points</Label
-                            >
-                            <Input
-                                id="guest_filter_min_points"
-                                v-model="filtersForm.min_loyalty_points"
-                                type="number"
-                                min="0"
-                                step="1"
-                                class="mt-1"
-                            />
-                        </div>
-
-                        <div>
-                            <Label for="guest_filter_max_points"
-                                >Max Loyalty Points</Label
-                            >
-                            <Input
-                                id="guest_filter_max_points"
-                                v-model="filtersForm.max_loyalty_points"
-                                type="number"
-                                min="0"
-                                step="1"
-                                class="mt-1"
-                            />
-                        </div>
-
-                        <div>
-                            <Label for="guest_filter_has_phone"
-                                >Has Phone</Label
-                            >
-                            <Select v-model="filtersForm.has_phone">
-                                <SelectTrigger
-                                    id="guest_filter_has_phone"
-                                    class="mt-1"
-                                >
-                                    <SelectValue placeholder="Any" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">Any</SelectItem>
-                                    <SelectItem value="yes">Yes</SelectItem>
-                                    <SelectItem value="no">No</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-
-                    <div class="flex items-center gap-2">
-                        <Button type="submit">Apply Filters</Button>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            :disabled="!hasActiveFilters"
-                            @click="clearFilters"
+            <div>
+                <Label for="guest_filter_tier">Tier</Label>
+                <Select v-model="filtersForm.loyalty_tier">
+                    <SelectTrigger id="guest_filter_tier" class="mt-1">
+                        <SelectValue placeholder="Any tier" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Any tier</SelectItem>
+                        <SelectItem
+                            v-for="tier in tiers"
+                            :key="tier"
+                            :value="tier"
                         >
-                            Clear
-                        </Button>
-                    </div>
-                </form>
-            </CardContent>
-        </Card>
+                            {{ labelize(tier) }}
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
 
-        <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Card class="bg-white/90">
-                <CardHeader class="pb-2">
-                    <CardTitle class="text-sm text-muted-foreground"
-                        >Total guests</CardTitle
+            <div>
+                <Label for="guest_filter_has_email">Has Email</Label>
+                <Select v-model="filtersForm.has_email">
+                    <SelectTrigger id="guest_filter_has_email" class="mt-1">
+                        <SelectValue placeholder="Any" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Any</SelectItem>
+                        <SelectItem value="yes">Yes</SelectItem>
+                        <SelectItem value="no">No</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+
+            <div>
+                <Label for="guest_filter_has_phone">Has Phone</Label>
+                <Select v-model="filtersForm.has_phone">
+                    <SelectTrigger id="guest_filter_has_phone" class="mt-1">
+                        <SelectValue placeholder="Any" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Any</SelectItem>
+                        <SelectItem value="yes">Yes</SelectItem>
+                        <SelectItem value="no">No</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <Label for="guest_filter_last_stay_from"
+                        >Last Stay From</Label
+                    >
+                    <Input
+                        id="guest_filter_last_stay_from"
+                        v-model="filtersForm.last_stay_from"
+                        type="date"
+                        class="mt-1"
+                    />
+                </div>
+                <div>
+                    <Label for="guest_filter_last_stay_to">Last Stay To</Label>
+                    <Input
+                        id="guest_filter_last_stay_to"
+                        v-model="filtersForm.last_stay_to"
+                        type="date"
+                        class="mt-1"
+                    />
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <Label for="guest_filter_min_points">Min Points</Label>
+                    <Input
+                        id="guest_filter_min_points"
+                        v-model="filtersForm.min_loyalty_points"
+                        type="number"
+                        min="0"
+                        step="1"
+                        class="mt-1"
+                    />
+                </div>
+                <div>
+                    <Label for="guest_filter_max_points">Max Points</Label>
+                    <Input
+                        id="guest_filter_max_points"
+                        v-model="filtersForm.max_loyalty_points"
+                        type="number"
+                        min="0"
+                        step="1"
+                        class="mt-1"
+                    />
+                </div>
+            </div>
+        </FilterSheet>
+
+        <section class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+            <Card
+                v-for="card in guestSummaryCards"
+                :key="card.label"
+                class="gap-1 bg-white/90 py-4 sm:gap-2 sm:py-6"
+            >
+                <CardHeader class="px-4 pb-0 sm:px-6 sm:pb-2">
+                    <CardTitle
+                        class="text-xs text-muted-foreground sm:text-sm"
+                        >{{ card.label }}</CardTitle
                     >
                 </CardHeader>
-                <CardContent class="text-3xl font-semibold">{{
-                    guests.length
-                }}</CardContent>
-            </Card>
-            <Card v-for="tier in tiers" :key="tier" class="bg-white/90">
-                <CardHeader class="pb-2">
-                    <CardTitle class="text-sm text-muted-foreground">
-                        {{ labelize(tier) }}
-                    </CardTitle>
-                </CardHeader>
-                <CardContent class="text-3xl font-semibold">
-                    {{ tierCounts[tier] || 0 }}
+                <CardContent
+                    class="px-4 text-2xl font-semibold sm:px-6 sm:text-3xl"
+                >
+                    {{ card.value }}
                 </CardContent>
             </Card>
         </section>
@@ -630,247 +622,115 @@ const deleteGuest = () => {
                     }}
                 </div>
 
-                <div v-else class="space-y-4">
+                <div v-else class="space-y-3">
                     <Card
                         v-for="guest in guests"
                         :key="guest.id"
                         :accent-class="guestAccentClass(guest)"
                     >
-                        <CardContent class="p-0">
+                        <CardContent
+                            class="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5"
+                        >
+                            <!-- Identity -->
+                            <div class="flex min-w-0 items-start gap-3">
+                                <div
+                                    class="grid size-11 shrink-0 place-items-center rounded-full text-sm font-semibold ring-1"
+                                    :class="guestPointsTone(guest)"
+                                >
+                                    {{ guestInitials(guest) }}
+                                </div>
+                                <div class="min-w-0 space-y-1">
+                                    <div
+                                        class="flex flex-wrap items-center gap-2"
+                                    >
+                                        <h3
+                                            class="truncate font-semibold tracking-tight text-gray-900"
+                                        >
+                                            {{ guest.full_name }}
+                                        </h3>
+                                        <Badge
+                                            :class="
+                                                tierColor(guest.loyalty_tier)
+                                            "
+                                        >
+                                            <Star class="mr-1 size-3" />
+                                            {{ labelize(guest.loyalty_tier) }}
+                                        </Badge>
+                                    </div>
+                                    <p class="truncate text-sm text-gray-500">
+                                        {{ guestContactLabel(guest) }}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Facts + actions -->
                             <div
-                                class="grid gap-0 lg:grid-cols-[minmax(0,1.35fr)_minmax(260px,0.9fr)_auto]"
+                                class="flex flex-wrap items-center gap-x-6 gap-y-3 sm:shrink-0 sm:justify-end"
                             >
-                                <div class="space-y-4 p-5 lg:p-6">
-                                    <div
-                                        class="flex flex-wrap items-start justify-between gap-3"
+                                <div>
+                                    <p
+                                        class="text-[11px] font-medium tracking-wide text-slate-400 uppercase"
                                     >
-                                        <div class="min-w-0 space-y-2">
-                                            <div
-                                                class="flex flex-wrap items-center gap-2"
-                                            >
-                                                <h3
-                                                    class="text-lg font-semibold tracking-tight break-words text-gray-900"
-                                                >
-                                                    {{ guest.full_name }}
-                                                </h3>
-                                                <Badge
-                                                    :class="
-                                                        tierColor(
-                                                            guest.loyalty_tier,
-                                                        )
-                                                    "
-                                                >
-                                                    <Star class="mr-1 size-3" />
-                                                    {{
-                                                        labelize(
-                                                            guest.loyalty_tier,
-                                                        )
-                                                    }}
-                                                </Badge>
-                                            </div>
-                                            <p
-                                                class="text-sm break-words text-gray-500"
-                                            >
-                                                {{ guestContactLabel(guest) }}
-                                            </p>
-                                        </div>
-
-                                        <div
-                                            class="max-w-56 truncate rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200"
-                                        >
-                                            {{ guest.loyalty_points }} points
-                                        </div>
-                                    </div>
-
-                                    <div
-                                        class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+                                        Loyalty
+                                    </p>
+                                    <p
+                                        class="text-sm font-semibold text-slate-900"
                                     >
-                                        <div
-                                            class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200"
-                                        >
-                                            <p
-                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
-                                            >
-                                                Contact
-                                            </p>
-                                            <p
-                                                class="mt-1 text-sm font-semibold break-words text-slate-900"
-                                            >
-                                                {{ guest.email || 'No email' }}
-                                            </p>
-                                            <p
-                                                class="text-xs break-words text-slate-500"
-                                            >
-                                                {{ guest.phone || 'No phone' }}
-                                            </p>
-                                        </div>
-
-                                        <div
-                                            class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200"
-                                        >
-                                            <p
-                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
-                                            >
-                                                Last Stay
-                                            </p>
-                                            <p
-                                                class="mt-1 text-sm font-semibold break-words text-slate-900"
-                                            >
-                                                {{ guestStayLabel(guest) }}
-                                            </p>
-                                            <p
-                                                class="text-xs break-words text-slate-500"
-                                            >
-                                                Loyalty tier:
-                                                {{
-                                                    labelize(guest.loyalty_tier)
-                                                }}
-                                            </p>
-                                        </div>
-
-                                        <div
-                                            class="rounded-2xl p-3 ring-1"
-                                            :class="guestPointsTone(guest)"
-                                        >
-                                            <p
-                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
-                                            >
-                                                Loyalty
-                                            </p>
-                                            <p
-                                                class="mt-1 text-sm font-semibold"
-                                            >
-                                                {{ guest.loyalty_points }}
-                                                points
-                                            </p>
-                                            <p class="text-xs">
-                                                {{
-                                                    labelize(guest.loyalty_tier)
-                                                }}
-                                                member
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div class="flex flex-wrap gap-2">
-                                        <span
-                                            class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
-                                        >
-                                            {{
-                                                guest.email ||
-                                                'No email recorded'
-                                            }}
-                                        </span>
-                                        <span
-                                            class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
-                                        >
-                                            {{
-                                                guest.phone ||
-                                                'No phone recorded'
-                                            }}
-                                        </span>
-                                        <span
-                                            class="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
-                                        >
-                                            {{
-                                                guest.last_stay_date ||
-                                                'No stay recorded'
-                                            }}
-                                        </span>
-                                    </div>
+                                        {{ guest.loyalty_points }} pts
+                                    </p>
                                 </div>
-
-                                <div
-                                    class="border-t border-slate-200 bg-slate-50/70 p-5 lg:border-t-0 lg:border-l lg:p-6"
-                                >
-                                    <div class="space-y-3">
-                                        <div
-                                            class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
-                                        >
-                                            <p
-                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
-                                            >
-                                                Guest Record
-                                            </p>
-                                            <p
-                                                class="mt-1 text-sm font-semibold text-slate-900"
-                                            >
-                                                {{ guest.full_name }}
-                                            </p>
-                                            <p class="text-xs text-slate-500">
-                                                {{ guest.email || 'No email' }}
-                                            </p>
-                                        </div>
-
-                                        <div
-                                            class="rounded-2xl bg-white p-3 ring-1 ring-slate-200"
-                                        >
-                                            <p
-                                                class="text-xs font-medium tracking-wide text-slate-500 uppercase"
-                                            >
-                                                Recent Stay
-                                            </p>
-                                            <p
-                                                class="mt-1 text-sm font-semibold text-slate-900"
-                                            >
-                                                {{
-                                                    guest.last_stay_date ||
-                                                    'No recorded stay'
-                                                }}
-                                            </p>
-                                            <p class="text-xs text-slate-500">
-                                                {{ guest.phone || 'No phone' }}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div
-                                    class="flex items-stretch border-t border-slate-200 p-5 lg:border-t-0 lg:border-l lg:p-6"
-                                >
-                                    <div
-                                        class="flex w-full flex-col gap-2 sm:w-auto"
+                                <div>
+                                    <p
+                                        class="text-[11px] font-medium tracking-wide text-slate-400 uppercase"
                                     >
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            as-child
-                                            class="h-10 w-full justify-start gap-2 rounded-xl"
-                                        >
-                                            <Link
-                                                :href="
-                                                    edit([team.slug, guest.id])
-                                                        .url
-                                                "
-                                            >
-                                                <Edit class="size-3.5" />
-                                                Edit
-                                            </Link>
-                                        </Button>
-                                        <Button
-                                            variant="destructive"
-                                            size="sm"
-                                            class="h-10 w-full justify-start gap-2 rounded-xl"
-                                            :disabled="!isAdmin"
-                                            :title="
-                                                isAdmin
-                                                    ? 'Delete guest'
-                                                    : 'Admin only action'
-                                            "
-                                            @click="
-                                                guestToDelete = guest;
-                                                showDeleteDialog = true;
+                                        Last stay
+                                    </p>
+                                    <p
+                                        class="text-sm font-semibold text-slate-900"
+                                    >
+                                        {{ guestStayLabel(guest) }}
+                                    </p>
+                                </div>
+                                <div class="flex gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        as-child
+                                        class="gap-2"
+                                    >
+                                        <Link
+                                            :href="
+                                                edit([team.slug, guest.id]).url
                                             "
                                         >
-                                            <Trash2 class="size-3.5" />
-                                            Delete
-                                        </Button>
-                                    </div>
+                                            <Edit class="size-3.5" />
+                                            Edit
+                                        </Link>
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        class="gap-2 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                        :disabled="!isAdmin"
+                                        :title="
+                                            isAdmin
+                                                ? 'Delete guest'
+                                                : 'Admin only action'
+                                        "
+                                        @click="
+                                            guestToDelete = guest;
+                                            showDeleteDialog = true;
+                                        "
+                                    >
+                                        <Trash2 class="size-3.5" />
+                                    </Button>
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
                 </div>
+
+                <Pagination :pagination="pagination" label="guests" />
             </CardContent>
         </Card>
 

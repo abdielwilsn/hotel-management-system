@@ -1,14 +1,33 @@
 <?php
 
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\Booking;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Room;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
 
 uses(RefreshDatabase::class);
+
+/**
+ * Request the dashboard the way Inertia's client fetches a deferred prop:
+ * a partial reload scoped to `metricCards`.
+ */
+function loadDashboardMetrics(string $slug): TestResponse
+{
+    $version = app(HandleInertiaRequests::class)
+        ->version(request());
+
+    return test()->get("/{$slug}/dashboard", array_filter([
+        'X-Inertia' => 'true',
+        'X-Inertia-Version' => $version,
+        'X-Inertia-Partial-Component' => 'Dashboard',
+        'X-Inertia-Partial-Data' => 'metricCards',
+    ]));
+}
 
 test('guests are redirected to the login page', function () {
     $user = User::factory()->create();
@@ -22,14 +41,15 @@ test('authenticated users can visit the dashboard', function () {
     $user = User::factory()->create();
     $team = $user->currentTeam;
 
-    $response = $this
-        ->actingAs($user)
-        ->get("/{$team->slug}/dashboard");
+    $this->actingAs($user)
+        ->get("/{$team->slug}/dashboard")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page->component('Dashboard'));
 
-    $response->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->component('Dashboard')
-            ->has('metricCards', 4));
+    // metricCards is deferred; it arrives on the follow-up partial reload (JSON).
+    loadDashboardMetrics($team->slug)
+        ->assertOk()
+        ->assertJsonCount(4, 'props.metricCards');
 });
 
 test('dashboard metric cards are dynamic and team scoped', function () {
@@ -105,16 +125,16 @@ test('dashboard metric cards are dynamic and team scoped', function () {
         'payment_date' => now()->toDateString(),
     ]);
 
-    $this->actingAs($user)
-        ->get("/{$team->slug}/dashboard")
+    $this->actingAs($user);
+
+    loadDashboardMetrics($team->slug)
         ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('metricCards.0.title', 'New Bookings')
-            ->where('metricCards.0.value', 3)
-            ->where('metricCards.1.title', 'Current Check-ins')
-            ->where('metricCards.1.value', 2)
-            ->where('metricCards.2.title', 'Check-outs Today')
-            ->where('metricCards.2.value', 2)
-            ->where('metricCards.3.title', 'Revenue (MTD)')
-            ->where('metricCards.3.value', 120000));
+        ->assertJsonPath('props.metricCards.0.title', 'New Bookings')
+        ->assertJsonPath('props.metricCards.0.value', 3)
+        ->assertJsonPath('props.metricCards.1.title', 'Current Check-ins')
+        ->assertJsonPath('props.metricCards.1.value', 2)
+        ->assertJsonPath('props.metricCards.2.title', 'Check-outs Today')
+        ->assertJsonPath('props.metricCards.2.value', 2)
+        ->assertJsonPath('props.metricCards.3.title', 'Revenue (MTD)')
+        ->assertJsonPath('props.metricCards.3.value', 120000);
 });

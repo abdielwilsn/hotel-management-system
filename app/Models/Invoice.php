@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Database\Factories\InvoiceFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Invoice extends Model
 {
-    /** @use HasFactory<\Database\Factories\InvoiceFactory> */
+    /** @use HasFactory<InvoiceFactory> */
     use HasFactory;
 
     protected $fillable = [
@@ -68,5 +69,28 @@ class Invoice extends Model
     public function getBalanceDueAttribute(): float
     {
         return max((float) $this->total_amount - (float) $this->paid_amount, 0);
+    }
+
+    /**
+     * Derive the invoice status from a paid amount against the current total.
+     * A voided invoice keeps its status.
+     */
+    public function statusFor(float $paidAmount): string
+    {
+        $total = (float) $this->total_amount;
+
+        if ($this->status === 'void') {
+            return 'void';
+        }
+
+        if ($paidAmount >= $total && $total > 0) {
+            return 'paid';
+        }
+
+        if ($paidAmount > 0 && $paidAmount < $total) {
+            return 'partially_paid';
+        }
+
+        return 'issued';
     }
 }

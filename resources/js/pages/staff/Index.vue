@@ -13,6 +13,13 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -22,13 +29,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
 import { index, store, edit, destroy } from '@/routes/staff';
 import type { Staff, StaffRole, StaffStatus, Team } from '@/types';
 
@@ -84,6 +84,7 @@ const roleLabel = (role: StaffRole) => {
         manager: 'Manager',
         admin: 'Admin',
     };
+
     return labels[role] || role;
 };
 
@@ -93,6 +94,7 @@ const statusColor = (status: StaffStatus) => {
         inactive: 'bg-gray-100 text-gray-800',
         on_leave: 'bg-yellow-100 text-yellow-800',
     };
+
     return colors[status] || 'bg-gray-100 text-gray-800';
 };
 
@@ -106,7 +108,10 @@ const submit = () => {
 };
 
 const deleteStaff = () => {
-    if (!staffToDelete.value) return;
+    if (!staffToDelete.value) {
+return;
+}
+
     deleteForm.delete(destroy([props.team.slug, staffToDelete.value.id]).url, {
         onSuccess: () => {
             showDeleteDialog.value = false;

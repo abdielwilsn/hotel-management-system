@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Expenses\SaveExpenseRequest;
 use App\Models\Expense;
 use App\Models\Team;
+use App\Support\PaginationMeta;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -21,10 +22,12 @@ class ExpenseController extends Controller
         $expenses = $current_team->expenses()
             ->orderByDesc('incurred_date')
             ->orderByDesc('id')
-            ->get();
+            ->paginate(20)
+            ->withQueryString();
 
         return Inertia::render('expenses/Index', [
-            'expenses' => $expenses,
+            'expenses' => $expenses->items(),
+            'pagination' => PaginationMeta::from($expenses),
             'categories' => ['utilities', 'maintenance', 'supplies', 'payroll', 'marketing', 'other'],
             'statuses' => ['pending', 'paid', 'cancelled'],
             'team' => $current_team->only('id', 'slug', 'name'),

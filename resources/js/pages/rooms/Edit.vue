@@ -6,6 +6,13 @@ import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -15,13 +22,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
 import { edit, index, update, destroy } from '@/routes/rooms';
 import type { Team } from '@/types';
 
@@ -89,6 +89,7 @@ const roomTypeLabel = (type: string) => {
         deluxe: 'Deluxe',
         penthouse: 'Penthouse',
     };
+
     return labels[type] || type;
 };
 
@@ -99,6 +100,7 @@ const statusColor = (status: string) => {
         maintenance: 'bg-orange-100 text-orange-800',
         cleaning: 'bg-purple-100 text-purple-800',
     };
+
     return colors[status] || 'bg-gray-100 text-gray-800';
 };
 
@@ -135,7 +137,7 @@ const deleteRoom = () => {
         <!-- Room Status -->
         <div class="flex items-center justify-between">
             <div>
-                <h1 class="text-3xl font-bold text-gray-900">
+                <h1 class="text-2xl font-bold text-gray-900 sm:text-3xl">
                     Room {{ room.room_number }}
                 </h1>
                 <p class="mt-1 text-gray-600">Floor {{ room.floor }}</p>
@@ -298,11 +300,11 @@ const deleteRoom = () => {
                     </div>
 
                     <!-- Actions -->
-                    <div class="flex gap-2 pt-4">
+                    <div class="flex flex-wrap items-center gap-2 pt-4">
                         <Button
                             type="submit"
                             :disabled="form.processing"
-                            class="bg-black hover:bg-hotel-primary/90 gap-2"
+                            class="hover:bg-hotel-primary/90 gap-2 bg-black"
                         >
                             <Save class="h-4 w-4" />
                             {{ form.processing ? 'Saving...' : 'Save Changes' }}

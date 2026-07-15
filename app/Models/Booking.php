@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Booking extends Model
@@ -59,6 +60,34 @@ class Booking extends Model
     public function invoice(): HasOne
     {
         return $this->hasOne(Invoice::class)->latestOfMany();
+    }
+
+    /**
+     * @return HasMany<BookingDiscount, $this>
+     */
+    public function discounts(): HasMany
+    {
+        return $this->hasMany(BookingDiscount::class);
+    }
+
+    /**
+     * The current pending or approved discount (there is at most one).
+     */
+    public function activeDiscount(): HasOne
+    {
+        return $this->hasOne(BookingDiscount::class)
+            ->whereIn('status', ['pending', 'approved'])
+            ->latestOfMany();
+    }
+
+    /**
+     * The approved discount that actually reduces the bill, if any.
+     */
+    public function approvedDiscount(): HasOne
+    {
+        return $this->hasOne(BookingDiscount::class)
+            ->where('status', 'approved')
+            ->latestOfMany();
     }
 
     public function scopeForTeam(Builder $query, Team $team): Builder

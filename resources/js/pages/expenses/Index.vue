@@ -4,6 +4,8 @@ import { Edit, Plus, ReceiptText, Trash2 } from 'lucide-vue-next';
 import { ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import Pagination from '@/components/Pagination.vue';
+import type {PaginationMeta} from '@/components/Pagination.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,6 +25,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { useFormatters } from '@/lib/format';
 import { destroy, edit, index, store } from '@/routes/expenses';
 
 type Expense = {
@@ -38,6 +41,7 @@ type Expense = {
 
 type Props = {
     expenses: Expense[];
+    pagination: PaginationMeta;
     categories: string[];
     statuses: string[];
     team: { id: number; slug: string; name: string };
@@ -72,11 +76,7 @@ const form = useForm({
 
 const deleteForm = useForm({});
 
-const formatCurrency = (value: number) =>
-    new Intl.NumberFormat('en-NG', {
-        style: 'currency',
-        currency: 'NGN',
-    }).format(Number(value));
+const { formatCurrency } = useFormatters();
 
 const labelize = (value: string) =>
     value.replace('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
@@ -532,6 +532,8 @@ const deleteExpense = () => {
                         </CardContent>
                     </Card>
                 </div>
+
+                <Pagination :pagination="pagination" label="expenses" />
             </CardContent>
         </Card>
 

@@ -12,11 +12,11 @@ import {
     Wallet,
 } from 'lucide-vue-next';
 import { computed } from 'vue';
+import { Button } from '@/components/ui/button';
 import { dashboard, login, register } from '@/routes';
 import { index as bookingsIndex } from '@/routes/bookings';
 import { index as paymentsIndex } from '@/routes/payments';
 import { index as reportsIndex } from '@/routes/reports';
-import { Button } from '@/components/ui/button';
 
 withDefaults(
     defineProps<{

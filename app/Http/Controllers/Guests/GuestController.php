@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Guests\SaveGuestRequest;
 use App\Models\Guest;
 use App\Models\Team;
+use App\Support\PaginationMeta;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -80,10 +81,12 @@ class GuestController extends Controller
             })
             ->orderBy('last_name')
             ->orderBy('first_name')
-            ->get();
+            ->paginate(20)
+            ->withQueryString();
 
         return Inertia::render('guests/Index', [
-            'guests' => $guests,
+            'guests' => $guests->items(),
+            'pagination' => PaginationMeta::from($guests),
             'tiers' => ['standard', 'silver', 'gold', 'platinum'],
             'filters' => Arr::only($filters, [
                 'search',

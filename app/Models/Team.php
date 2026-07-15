@@ -12,11 +12,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['name', 'slug', 'is_personal'])]
+#[Fillable(['name', 'slug', 'is_personal', 'currency', 'locale'])]
 class Team extends Model
 {
     /** @use HasFactory<TeamFactory> */
     use GeneratesUniqueTeamSlugs;
+
     use HasFactory;
     use SoftDeletes;
 
@@ -166,11 +167,21 @@ class Team extends Model
     /**
      * Get all inventory categories for this team.
      *
-     * @return HasMany<\App\Models\InventoryCategory, $this>
+     * @return HasMany<InventoryCategory, $this>
      */
     public function inventoryCategories(): HasMany
     {
-        return $this->hasMany(\App\Models\InventoryCategory::class);
+        return $this->hasMany(InventoryCategory::class);
+    }
+
+    /**
+     * Get all POS outlets (bar, restaurant, ...) for this team.
+     *
+     * @return HasMany<PosOutlet, $this>
+     */
+    public function posOutlets(): HasMany
+    {
+        return $this->hasMany(PosOutlet::class);
     }
 
     /**

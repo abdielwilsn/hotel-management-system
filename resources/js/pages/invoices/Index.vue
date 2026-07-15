@@ -4,9 +4,18 @@ import { FileText, Plus, Edit, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import Pagination from '@/components/Pagination.vue';
+import type {PaginationMeta} from '@/components/Pagination.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -16,13 +25,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
+import { useFormatters } from '@/lib/format';
 import { index, store, edit, destroy } from '@/routes/invoices';
 import type { Team } from '@/types';
 
@@ -52,6 +55,7 @@ type Invoice = {
 
 type Props = {
     invoices: Invoice[];
+    pagination: PaginationMeta;
     bookings: BookingOption[];
     statuses: string[];
     paymentStatuses: string[];
@@ -185,11 +189,7 @@ const statusColor = (status: string) => {
 const statusLabel = (status: string) =>
     status.replace('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 
-const formatCurrency = (value: number) =>
-    new Intl.NumberFormat('en-NG', {
-        style: 'currency',
-        currency: 'NGN',
-    }).format(Number(value));
+const { formatCurrency } = useFormatters();
 
 const invoiceAccentClass = (invoice: Invoice) => {
     if (invoice.status === 'paid') {
@@ -896,6 +896,8 @@ const applyBookingDetails = (bookingId: string) => {
                     </div>
                 </CardContent>
             </Card>
+
+            <Pagination :pagination="pagination" label="invoices" />
         </div>
 
         <Card v-else class="border-dashed">

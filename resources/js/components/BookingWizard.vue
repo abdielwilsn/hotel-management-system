@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import { ChevronRight, ChevronLeft, Search } from 'lucide-vue-next';
-import { store } from '@/routes/bookings';
+import { ref, computed, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -22,6 +20,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { useFormatters } from '@/lib/format';
+import { store } from '@/routes/bookings';
 
 type Room = {
     id: number;
@@ -44,6 +44,8 @@ const emit = defineEmits<{
     submit: [];
 }>();
 
+const { formatCurrency } = useFormatters();
+
 const step = ref(1);
 const totalSteps = 3;
 const roomSearchDraft = ref('');
@@ -59,6 +61,9 @@ const form = useForm({
     check_out_date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
     status: 'pending',
     notes: '',
+    discount_type: '',
+    discount_value: '',
+    discount_reason: '',
     process_payment: false,
     payment_amount: '',
     payment_method: 'cash',
@@ -72,9 +77,13 @@ const selectedRoom = computed(() =>
 );
 
 const nightsCount = computed(() => {
-    if (!form.check_in_date || !form.check_out_date) return 0;
+    if (!form.check_in_date || !form.check_out_date) {
+        return 0;
+    }
+
     const checkIn = new Date(form.check_in_date);
     const checkOut = new Date(form.check_out_date);
+
     return Math.ceil(
         (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24),
     );
@@ -103,9 +112,11 @@ const canGoNext = computed(() => {
     if (step.value === 1) {
         return form.guest_name && form.guest_email && form.number_of_guests;
     }
+
     if (step.value === 2) {
         return form.room_id && form.check_in_date && form.check_out_date;
     }
+
     return true;
 });
 
@@ -283,7 +294,7 @@ watch(
                                 {{ room.capacity }} guests
                             </div>
                             <div class="mt-1 text-sm font-medium text-gray-900">
-                                ₦{{ room.price_per_night }}/night
+                                {{ formatCurrency(room.price_per_night) }}/night
                             </div>
                         </button>
                     </div>
@@ -306,7 +317,7 @@ watch(
                         {{ selectedRoom.room_type }}
                     </div>
                     <div class="text-blue-700">
-                        ₦{{ selectedRoom.price_per_night }}/night
+                        {{ formatCurrency(selectedRoom.price_per_night) }}/night
                     </div>
                 </div>
 
@@ -340,7 +351,7 @@ watch(
                         Total: {{ nightsCount }} nights
                     </div>
                     <div class="text-amber-700">
-                        ₦{{ totalAmount.toFixed(2) }}
+                        {{ formatCurrency(totalAmount) }}
                     </div>
                 </div>
 
@@ -381,7 +392,7 @@ watch(
                             Booking Total
                         </div>
                         <div class="text-2xl font-bold text-green-700">
-                            ₦{{ totalAmount.toFixed(2) }}
+                            {{ formatCurrency(totalAmount) }}
                         </div>
                     </div>
 
@@ -434,6 +445,59 @@ watch(
                         <InputError :message="form.errors.payment_reference" />
                     </div>
                 </template>
+
+                <div class="rounded-lg border p-3">
+                    <Label for="discount_type">Discount (optional)</Label>
+                    <p class="mt-0.5 mb-2 text-xs text-muted-foreground">
+                        A discount you add here is submitted for manager
+                        approval before it reduces the guest's bill.
+                    </p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <Select v-model="form.discount_type">
+                                <SelectTrigger id="discount_type" class="mt-1">
+                                    <SelectValue placeholder="No discount" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value=""
+                                        >No discount</SelectItem
+                                    >
+                                    <SelectItem value="percentage">
+                                        Percentage (%)
+                                    </SelectItem>
+                                    <SelectItem value="fixed">
+                                        Fixed amount (₦)
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <InputError :message="form.errors.discount_type" />
+                        </div>
+                        <div v-if="form.discount_type">
+                            <Input
+                                v-model="form.discount_value"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                class="mt-1"
+                                :placeholder="
+                                    form.discount_type === 'percentage'
+                                        ? 'e.g. 10'
+                                        : 'e.g. 5000'
+                                "
+                            />
+                            <InputError :message="form.errors.discount_value" />
+                        </div>
+                    </div>
+                    <div v-if="form.discount_type" class="mt-3">
+                        <Input
+                            v-model="form.discount_reason"
+                            type="text"
+                            class="mt-1"
+                            placeholder="Reason (optional)"
+                        />
+                        <InputError :message="form.errors.discount_reason" />
+                    </div>
+                </div>
 
                 <div>
                     <Label for="notes">Notes</Label>
