@@ -50,10 +50,6 @@ Route::prefix('{current_team}')
         Route::middleware(EnsureTeamMembership::class.':member')->group(function () {
             Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
-            Route::get('departments', [DepartmentController::class, 'index'])->name('departments.index');
-
-            Route::get('staff', [StaffController::class, 'index'])->name('staff.index');
-
             Route::get('rooms', [RoomController::class, 'index'])->name('rooms.index');
 
             Route::get('bookings', [BookingController::class, 'index'])->name('bookings.index');
@@ -62,11 +58,7 @@ Route::prefix('{current_team}')
 
             Route::get('payments', [PaymentController::class, 'index'])->name('payments.index');
 
-            Route::get('expenses', [ExpenseController::class, 'index'])->name('expenses.index');
-
             Route::get('guests', [GuestController::class, 'index'])->name('guests.index');
-
-            Route::get('inventory', [InventoryController::class, 'index'])->name('inventory.index');
 
             Route::inertia('usage-guide', 'UsageGuide')->name('usage-guide');
 
@@ -94,11 +86,13 @@ Route::prefix('{current_team}')
 
                 Route::get('forecasts', [ForecastController::class, 'index'])->name('forecasts.index');
 
+                Route::get('departments', [DepartmentController::class, 'index'])->name('departments.index');
                 Route::post('departments', [DepartmentController::class, 'store'])->name('departments.store');
                 Route::get('departments/{department}/edit', [DepartmentController::class, 'edit'])->name('departments.edit');
                 Route::patch('departments/{department}', [DepartmentController::class, 'update'])->name('departments.update');
                 Route::delete('departments/{department}', [DepartmentController::class, 'destroy'])->name('departments.destroy');
 
+                Route::get('staff', [StaffController::class, 'index'])->name('staff.index');
                 Route::post('staff', [StaffController::class, 'store'])->name('staff.store');
                 Route::get('staff/{staff}/edit', [StaffController::class, 'edit'])->name('staff.edit');
                 Route::patch('staff/{staff}', [StaffController::class, 'update'])->name('staff.update');
@@ -123,6 +117,7 @@ Route::prefix('{current_team}')
                 Route::patch('payments/{payment}', [PaymentController::class, 'update'])->name('payments.update');
                 Route::delete('payments/{payment}', [PaymentController::class, 'destroy'])->name('payments.destroy');
 
+                Route::get('expenses', [ExpenseController::class, 'index'])->name('expenses.index');
                 Route::post('expenses', [ExpenseController::class, 'store'])->name('expenses.store');
                 Route::get('expenses/{expense}/edit', [ExpenseController::class, 'edit'])->name('expenses.edit');
                 Route::patch('expenses/{expense}', [ExpenseController::class, 'update'])->name('expenses.update');
@@ -130,6 +125,7 @@ Route::prefix('{current_team}')
 
                 Route::delete('guests/{guest}', [GuestController::class, 'destroy'])->name('guests.destroy');
 
+                Route::get('inventory', [InventoryController::class, 'index'])->name('inventory.index');
                 Route::post('inventory', [InventoryController::class, 'store'])->name('inventory.store');
                 Route::post('inventory/categories', [InventoryController::class, 'storeCategory'])->name('inventory.categories.store');
                 Route::get('inventory/categories/{inventory_category}/edit', [InventoryController::class, 'editCategory'])->name('inventory.categories.edit');

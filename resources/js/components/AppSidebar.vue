@@ -159,23 +159,34 @@ const mainNavItems = computed<NavItem[]>(() => [
     },
 ]);
 
+// Manager-only modules. Receptionists (the Member role) don't work with these,
+// and the backend routes are gated to admins too, so hide them from the nav.
+const adminOnlyTitles = ['Departments', 'Staff', 'Inventory', 'Expenses'];
+
+const isVisibleNavItem = (item: NavItem) =>
+    isAdmin.value || !adminOnlyTitles.includes(item.title);
+
 const operationsNavItems = computed<NavItem[]>(() =>
-    mainNavItems.value.filter((item) =>
-        [
-            'Dashboard',
-            'Departments',
-            'Staff',
-            'Rooms',
-            'Guests',
-            'Inventory',
-            'Usage Guide',
-        ].includes(item.title),
+    mainNavItems.value.filter(
+        (item) =>
+            [
+                'Dashboard',
+                'Departments',
+                'Staff',
+                'Rooms',
+                'Guests',
+                'Inventory',
+                'Usage Guide',
+            ].includes(item.title) && isVisibleNavItem(item),
     ),
 );
 
 const revenueNavItems = computed<NavItem[]>(() =>
-    mainNavItems.value.filter((item) =>
-        ['Bookings', 'Invoices', 'Payments', 'Expenses'].includes(item.title),
+    mainNavItems.value.filter(
+        (item) =>
+            ['Bookings', 'Invoices', 'Payments', 'Expenses'].includes(
+                item.title,
+            ) && isVisibleNavItem(item),
     ),
 );
 

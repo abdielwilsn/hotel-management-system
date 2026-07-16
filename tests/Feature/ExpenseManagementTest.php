@@ -7,14 +7,24 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-test('team members can view expenses index page', function () {
+test('managers can view expenses index page', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'admin']);
+
+    $this->actingAs($user)
+        ->get("/{$team->slug}/expenses")
+        ->assertOk();
+});
+
+test('receptionists cannot view expenses index page', function () {
     $team = Team::factory()->create();
     $user = User::factory()->create();
     $user->teams()->attach($team, ['role' => 'member']);
 
     $this->actingAs($user)
         ->get("/{$team->slug}/expenses")
-        ->assertOk();
+        ->assertForbidden();
 });
 
 test('admins can create expenses', function () {

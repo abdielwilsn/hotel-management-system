@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useForm, Link, router } from '@inertiajs/vue3';
+import { useForm, Link, router, usePage } from '@inertiajs/vue3';
 import { Plus, Home, Trash2, Edit, CalendarPlus } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import FilterSheet from '@/components/FilterSheet.vue';
@@ -74,7 +74,16 @@ type Props = {
 
 const props = defineProps<Props>();
 
+const page = usePage();
 const { formatCurrency } = useFormatters();
+
+// Adding, editing, and deleting rooms are manager-only actions (the backend
+// routes are admin-gated); receptionists can still view and book rooms.
+const isAdmin = computed(() => {
+    const role = page.props.currentTeam?.role;
+
+    return role === 'owner' || role === 'admin';
+});
 
 defineOptions({
     layout: (props: { currentTeam?: Team | null }) => ({
@@ -433,7 +442,7 @@ const createBookingForRoom = () => {
         </div>
 
         <!-- Create useForm -->
-        <Card v-if="showCreateForm" class="border-hotel-primary/20">
+        <Card v-if="showCreateForm && isAdmin" class="border-hotel-primary/20">
             <CardHeader>
                 <CardTitle>Add New Room</CardTitle>
             </CardHeader>
@@ -590,7 +599,7 @@ const createBookingForRoom = () => {
         </Card>
 
         <!-- Create Button -->
-        <div v-else class="flex justify-end">
+        <div v-else-if="isAdmin" class="flex justify-end">
             <Button @click="showCreateForm = true" class="gap-2">
                 <Plus class="h-4 w-4" />
                 Add Room
@@ -705,6 +714,7 @@ const createBookingForRoom = () => {
                             Book Room
                         </Button>
                         <Link
+                            v-if="isAdmin"
                             :href="edit([props.team.slug, room.id]).url"
                             class="flex-1"
                         >
@@ -718,6 +728,7 @@ const createBookingForRoom = () => {
                             </Button>
                         </Link>
                         <Button
+                            v-if="isAdmin"
                             variant="outline"
                             size="sm"
                             @click="
@@ -741,9 +752,17 @@ const createBookingForRoom = () => {
                     No rooms yet
                 </h3>
                 <p class="mb-4 text-gray-600">
-                    Start by adding your first room to manage availability
+                    {{
+                        isAdmin
+                            ? 'Start by adding your first room to manage availability'
+                            : 'No rooms have been set up yet. Please check back later.'
+                    }}
                 </p>
-                <Button @click="showCreateForm = true" class="gap-2">
+                <Button
+                    v-if="isAdmin"
+                    @click="showCreateForm = true"
+                    class="gap-2"
+                >
                     <Plus class="h-4 w-4" />
                     Add Your First Room
                 </Button>

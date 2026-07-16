@@ -11,10 +11,10 @@ use Inertia\Testing\AssertableInertia as Assert;
 
 uses(RefreshDatabase::class);
 
-test('team members can view reports index page', function () {
+test('managers can view reports index page', function () {
     $team = Team::factory()->create();
     $user = User::factory()->create();
-    $user->teams()->attach($team, ['role' => 'member']);
+    $user->teams()->attach($team, ['role' => 'admin']);
 
     $this->actingAs($user)
         ->get("/{$team->slug}/reports")
@@ -24,6 +24,16 @@ test('team members can view reports index page', function () {
             ->has('summary')
             ->has('monthlyTrend')
             ->has('paymentMethods'));
+});
+
+test('receptionists cannot view reports index page', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+
+    $this->actingAs($user)
+        ->get("/{$team->slug}/reports")
+        ->assertForbidden();
 });
 
 test('reports summary values are calculated from team data', function () {
@@ -37,7 +47,7 @@ test('reports summary values are calculated from team data', function () {
 
     Booking::factory()->create([
         'team_id' => $team->id,
-            'room_id' => $bookingRoom->id,
+        'room_id' => $bookingRoom->id,
         'status' => 'pending',
         'check_in_date' => now()->addDay()->toDateString(),
         'check_out_date' => now()->addDays(3)->toDateString(),
@@ -67,9 +77,9 @@ test('reports summary values are calculated from team data', function () {
             ->where('summary.total_rooms', 3)
             ->where('summary.occupied_rooms', 1)
             ->where('summary.occupancy_rate', 33.3)
-                ->where('summary.gross_revenue', 300)
-                ->where('summary.collected_revenue', 200)
-                ->where('summary.outstanding_revenue', 100));
+            ->where('summary.gross_revenue', 300)
+            ->where('summary.collected_revenue', 200)
+            ->where('summary.outstanding_revenue', 100));
 });
 
 test('reports only include current team data', function () {
@@ -110,6 +120,6 @@ test('reports only include current team data', function () {
         ->get("/{$team->slug}/reports")
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-                ->where('summary.gross_revenue', 400)
-                ->where('summary.collected_revenue', 150));
+            ->where('summary.gross_revenue', 400)
+            ->where('summary.collected_revenue', 150));
 });

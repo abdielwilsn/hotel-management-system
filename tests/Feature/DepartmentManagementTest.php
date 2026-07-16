@@ -5,17 +5,29 @@ use App\Models\Department;
 use App\Models\Team;
 use App\Models\User;
 
-test('team members can view the departments index page', function () {
+test('managers can view the departments index page', function () {
     $user = User::factory()->create();
     $team = Team::factory()->create();
 
-    $team->members()->attach($user, ['role' => TeamRole::Member->value]);
+    $team->members()->attach($user, ['role' => TeamRole::Admin->value]);
 
     $response = $this
         ->actingAs($user)
         ->get(route('departments.index', ['current_team' => $team]));
 
     $response->assertOk();
+});
+
+test('receptionists cannot view the departments index page', function () {
+    $user = User::factory()->create();
+    $team = Team::factory()->create();
+
+    $team->members()->attach($user, ['role' => TeamRole::Member->value]);
+
+    $this
+        ->actingAs($user)
+        ->get(route('departments.index', ['current_team' => $team]))
+        ->assertForbidden();
 });
 
 test('admins can create departments', function () {

@@ -93,6 +93,10 @@ const totalAmount = computed(
     () => nightsCount.value * (selectedRoom.value?.price_per_night || 0),
 );
 
+const hasDiscount = computed(
+    () => form.discount_type === 'percentage' || form.discount_type === 'fixed',
+);
+
 const filteredRooms = computed(() => {
     if (!roomSearchTerm.value.trim()) {
         return props.rooms;
@@ -137,7 +141,12 @@ const applyRoomSearch = () => {
 };
 
 const submitForm = () => {
-    form.post(store(props.teamSlug).url, {
+    // "none" is a UI-only sentinel (reka-ui forbids empty SelectItem values);
+    // the backend treats a blank discount_type as "no discount".
+    form.transform((data) => ({
+        ...data,
+        discount_type: hasDiscount.value ? data.discount_type : '',
+    })).post(store(props.teamSlug).url, {
         preserveScroll: true,
         preserveState: true,
         onSuccess: () => {
@@ -174,7 +183,7 @@ watch(
 
 <template>
     <Dialog :open="open" @update:open="handleOpenChange">
-        <DialogContent class="max-w-3xl">
+        <DialogContent class="flex max-h-[90dvh] max-w-3xl flex-col">
             <DialogHeader>
                 <DialogTitle>Create Booking</DialogTitle>
                 <DialogDescription>
@@ -192,327 +201,351 @@ watch(
                 />
             </div>
 
-            <!-- Step 1: Guest Details -->
-            <div v-show="step === 1" class="space-y-4">
-                <div>
-                    <Label for="guest_name">Guest Name *</Label>
-                    <Input
-                        id="guest_name"
-                        v-model="form.guest_name"
-                        type="text"
-                        placeholder="John Doe"
-                        class="mt-1"
-                    />
-                    <InputError :message="form.errors.guest_name" />
-                </div>
-
-                <div>
-                    <Label for="guest_email">Email *</Label>
-                    <Input
-                        id="guest_email"
-                        v-model="form.guest_email"
-                        type="email"
-                        placeholder="john@example.com"
-                        class="mt-1"
-                    />
-                    <InputError :message="form.errors.guest_email" />
-                </div>
-
-                <div>
-                    <Label for="guest_phone">Phone</Label>
-                    <Input
-                        id="guest_phone"
-                        v-model="form.guest_phone"
-                        type="tel"
-                        placeholder="+1 (555) 000-0000"
-                        class="mt-1"
-                    />
-                    <InputError :message="form.errors.guest_phone" />
-                </div>
-
-                <div>
-                    <Label for="number_of_guests">Number of Guests *</Label>
-                    <Select v-model="form.number_of_guests">
-                        <SelectTrigger id="number_of_guests" class="mt-1">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="1">1</SelectItem>
-                            <SelectItem value="2">2</SelectItem>
-                            <SelectItem value="3">3</SelectItem>
-                            <SelectItem value="4">4</SelectItem>
-                            <SelectItem value="5">5</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <InputError :message="form.errors.number_of_guests" />
-                </div>
-            </div>
-
-            <!-- Step 2: Room & Dates -->
-            <div v-show="step === 2" class="space-y-4">
-                <div>
-                    <Label for="room_search">Select Room *</Label>
-                    <div class="mt-1 flex gap-2">
+            <!-- Scrollable step body (nav stays pinned below) -->
+            <div class="-mx-1 flex-1 overflow-y-auto px-1">
+                <!-- Step 1: Guest Details -->
+                <div v-show="step === 1" class="space-y-4">
+                    <div>
+                        <Label for="guest_name">Guest Name *</Label>
                         <Input
-                            id="room_search"
-                            v-model="roomSearchDraft"
+                            id="guest_name"
+                            v-model="form.guest_name"
                             type="text"
-                            placeholder="Search by room number or type"
-                            @keydown.enter.prevent="applyRoomSearch"
+                            placeholder="John Doe"
+                            class="mt-1"
                         />
-                        <Button
-                            type="button"
-                            variant="outline"
-                            class="gap-2"
-                            @click="applyRoomSearch"
-                        >
-                            <Search class="h-4 w-4" />
-                            Search
-                        </Button>
+                        <InputError :message="form.errors.guest_name" />
                     </div>
 
-                    <div
-                        class="mt-3 grid max-h-60 grid-cols-1 gap-2 overflow-y-auto md:grid-cols-2"
-                    >
-                        <button
-                            v-for="room in filteredRooms"
-                            :key="room.id"
-                            type="button"
-                            class="rounded-lg border p-3 text-left transition"
-                            :class="
-                                form.room_id === String(room.id)
-                                    ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-300'
-                                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                            "
-                            @click="form.room_id = String(room.id)"
-                        >
-                            <div class="font-semibold text-gray-900">
-                                Room {{ room.room_number }}
-                            </div>
-                            <div class="text-sm text-gray-600">
-                                {{ room.room_type }} ·
-                                {{ room.capacity }} guests
-                            </div>
-                            <div class="mt-1 text-sm font-medium text-gray-900">
-                                {{ formatCurrency(room.price_per_night) }}/night
-                            </div>
-                        </button>
+                    <div>
+                        <Label for="guest_email">Email *</Label>
+                        <Input
+                            id="guest_email"
+                            v-model="form.guest_email"
+                            type="email"
+                            placeholder="john@example.com"
+                            class="mt-1"
+                        />
+                        <InputError :message="form.errors.guest_email" />
                     </div>
 
-                    <p
-                        v-if="filteredRooms.length === 0"
-                        class="mt-2 text-sm text-muted-foreground"
-                    >
-                        No rooms match your search.
-                    </p>
-
-                    <InputError :message="form.errors.room_id" />
-                </div>
-
-                <div
-                    v-if="selectedRoom"
-                    class="rounded border border-blue-200 bg-blue-50 p-3 text-sm"
-                >
-                    <div class="font-medium text-blue-900">
-                        {{ selectedRoom.room_type }}
+                    <div>
+                        <Label for="guest_phone">Phone</Label>
+                        <Input
+                            id="guest_phone"
+                            v-model="form.guest_phone"
+                            type="tel"
+                            placeholder="+1 (555) 000-0000"
+                            class="mt-1"
+                        />
+                        <InputError :message="form.errors.guest_phone" />
                     </div>
-                    <div class="text-blue-700">
-                        {{ formatCurrency(selectedRoom.price_per_night) }}/night
+
+                    <div>
+                        <Label for="number_of_guests">Number of Guests *</Label>
+                        <Select v-model="form.number_of_guests">
+                            <SelectTrigger id="number_of_guests" class="mt-1">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="1">1</SelectItem>
+                                <SelectItem value="2">2</SelectItem>
+                                <SelectItem value="3">3</SelectItem>
+                                <SelectItem value="4">4</SelectItem>
+                                <SelectItem value="5">5</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <InputError :message="form.errors.number_of_guests" />
                     </div>
                 </div>
 
-                <div>
-                    <Label for="check_in_date">Check-in Date *</Label>
-                    <Input
-                        id="check_in_date"
-                        v-model="form.check_in_date"
-                        type="date"
-                        class="mt-1"
-                    />
-                    <InputError :message="form.errors.check_in_date" />
-                </div>
-
-                <div>
-                    <Label for="check_out_date">Check-out Date *</Label>
-                    <Input
-                        id="check_out_date"
-                        v-model="form.check_out_date"
-                        type="date"
-                        class="mt-1"
-                    />
-                    <InputError :message="form.errors.check_out_date" />
-                </div>
-
-                <div
-                    v-if="nightsCount > 0"
-                    class="rounded border border-amber-200 bg-amber-50 p-3 text-sm"
-                >
-                    <div class="font-medium text-amber-900">
-                        Total: {{ nightsCount }} nights
-                    </div>
-                    <div class="text-amber-700">
-                        {{ formatCurrency(totalAmount) }}
-                    </div>
-                </div>
-
-                <div>
-                    <Label for="status">Status *</Label>
-                    <Select v-model="form.status">
-                        <SelectTrigger id="status" class="mt-1">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="confirmed">Confirmed</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <InputError :message="form.errors.status" />
-                </div>
-            </div>
-
-            <!-- Step 3: Payment (Optional) -->
-            <div v-show="step === 3" class="space-y-4">
-                <div class="flex items-center gap-2">
-                    <input
-                        id="process_payment"
-                        v-model="form.process_payment"
-                        type="checkbox"
-                        class="rounded border-gray-300"
-                    />
-                    <Label for="process_payment" class="cursor-pointer"
-                        >Process payment now?</Label
-                    >
-                </div>
-
-                <template v-if="form.process_payment">
-                    <div
-                        class="mb-4 rounded border border-green-200 bg-green-50 p-3 text-sm"
-                    >
-                        <div class="font-medium text-green-900">
-                            Booking Total
+                <!-- Step 2: Room & Dates -->
+                <div v-show="step === 2" class="space-y-4">
+                    <div>
+                        <Label for="room_search">Select Room *</Label>
+                        <div class="mt-1 flex gap-2">
+                            <Input
+                                id="room_search"
+                                v-model="roomSearchDraft"
+                                type="text"
+                                placeholder="Search by room number or type"
+                                @keydown.enter.prevent="applyRoomSearch"
+                            />
+                            <Button
+                                type="button"
+                                variant="outline"
+                                class="gap-2"
+                                @click="applyRoomSearch"
+                            >
+                                <Search class="h-4 w-4" />
+                                Search
+                            </Button>
                         </div>
-                        <div class="text-2xl font-bold text-green-700">
+
+                        <div
+                            class="mt-3 grid max-h-60 grid-cols-1 gap-2 overflow-y-auto md:grid-cols-2"
+                        >
+                            <button
+                                v-for="room in filteredRooms"
+                                :key="room.id"
+                                type="button"
+                                class="rounded-lg border p-3 text-left transition"
+                                :class="
+                                    form.room_id === String(room.id)
+                                        ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-300'
+                                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                "
+                                @click="form.room_id = String(room.id)"
+                            >
+                                <div class="font-semibold text-gray-900">
+                                    Room {{ room.room_number }}
+                                </div>
+                                <div class="text-sm text-gray-600">
+                                    {{ room.room_type }} ·
+                                    {{ room.capacity }} guests
+                                </div>
+                                <div
+                                    class="mt-1 text-sm font-medium text-gray-900"
+                                >
+                                    {{
+                                        formatCurrency(room.price_per_night)
+                                    }}/night
+                                </div>
+                            </button>
+                        </div>
+
+                        <p
+                            v-if="filteredRooms.length === 0"
+                            class="mt-2 text-sm text-muted-foreground"
+                        >
+                            No rooms match your search.
+                        </p>
+
+                        <InputError :message="form.errors.room_id" />
+                    </div>
+
+                    <div
+                        v-if="selectedRoom"
+                        class="rounded border border-blue-200 bg-blue-50 p-3 text-sm"
+                    >
+                        <div class="font-medium text-blue-900">
+                            {{ selectedRoom.room_type }}
+                        </div>
+                        <div class="text-blue-700">
+                            {{
+                                formatCurrency(selectedRoom.price_per_night)
+                            }}/night
+                        </div>
+                    </div>
+
+                    <div>
+                        <Label for="check_in_date">Check-in Date *</Label>
+                        <Input
+                            id="check_in_date"
+                            v-model="form.check_in_date"
+                            type="date"
+                            class="mt-1"
+                        />
+                        <InputError :message="form.errors.check_in_date" />
+                    </div>
+
+                    <div>
+                        <Label for="check_out_date">Check-out Date *</Label>
+                        <Input
+                            id="check_out_date"
+                            v-model="form.check_out_date"
+                            type="date"
+                            class="mt-1"
+                        />
+                        <InputError :message="form.errors.check_out_date" />
+                    </div>
+
+                    <div
+                        v-if="nightsCount > 0"
+                        class="rounded border border-amber-200 bg-amber-50 p-3 text-sm"
+                    >
+                        <div class="font-medium text-amber-900">
+                            Total: {{ nightsCount }} nights
+                        </div>
+                        <div class="text-amber-700">
                             {{ formatCurrency(totalAmount) }}
                         </div>
                     </div>
 
                     <div>
-                        <Label for="payment_amount">Payment Amount *</Label>
-                        <Input
-                            id="payment_amount"
-                            v-model="form.payment_amount"
-                            type="number"
-                            step="0.01"
-                            :placeholder="String(totalAmount)"
-                            class="mt-1"
-                        />
-                        <InputError :message="form.errors.payment_amount" />
-                    </div>
-
-                    <div>
-                        <Label for="payment_method">Payment Method *</Label>
-                        <Select v-model="form.payment_method">
-                            <SelectTrigger id="payment_method" class="mt-1">
+                        <Label for="status">Status *</Label>
+                        <Select v-model="form.status">
+                            <SelectTrigger id="status" class="mt-1">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="cash">Cash</SelectItem>
-                                <SelectItem value="credit_card"
-                                    >Credit Card</SelectItem
+                                <SelectItem value="pending">Pending</SelectItem>
+                                <SelectItem value="confirmed"
+                                    >Confirmed</SelectItem
                                 >
-                                <SelectItem value="debit_card"
-                                    >Debit Card</SelectItem
-                                >
-                                <SelectItem value="bank_transfer"
-                                    >Bank Transfer</SelectItem
-                                >
-                                <SelectItem value="check">Check</SelectItem>
                             </SelectContent>
                         </Select>
-                        <InputError :message="form.errors.payment_method" />
+                        <InputError :message="form.errors.status" />
+                    </div>
+                </div>
+
+                <!-- Step 3: Payment (Optional) -->
+                <div v-show="step === 3" class="space-y-4">
+                    <div class="flex items-center gap-2">
+                        <input
+                            id="process_payment"
+                            v-model="form.process_payment"
+                            type="checkbox"
+                            class="rounded border-gray-300"
+                        />
+                        <Label for="process_payment" class="cursor-pointer"
+                            >Process payment now?</Label
+                        >
+                    </div>
+
+                    <template v-if="form.process_payment">
+                        <div
+                            class="mb-4 rounded border border-green-200 bg-green-50 p-3 text-sm"
+                        >
+                            <div class="font-medium text-green-900">
+                                Booking Total
+                            </div>
+                            <div class="text-2xl font-bold text-green-700">
+                                {{ formatCurrency(totalAmount) }}
+                            </div>
+                        </div>
+
+                        <div>
+                            <Label for="payment_amount">Payment Amount *</Label>
+                            <Input
+                                id="payment_amount"
+                                v-model="form.payment_amount"
+                                type="number"
+                                step="0.01"
+                                :placeholder="String(totalAmount)"
+                                class="mt-1"
+                            />
+                            <InputError :message="form.errors.payment_amount" />
+                        </div>
+
+                        <div>
+                            <Label for="payment_method">Payment Method *</Label>
+                            <Select v-model="form.payment_method">
+                                <SelectTrigger id="payment_method" class="mt-1">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="cash">Cash</SelectItem>
+                                    <SelectItem value="credit_card"
+                                        >Credit Card</SelectItem
+                                    >
+                                    <SelectItem value="debit_card"
+                                        >Debit Card</SelectItem
+                                    >
+                                    <SelectItem value="bank_transfer"
+                                        >Bank Transfer</SelectItem
+                                    >
+                                    <SelectItem value="check">Check</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <InputError :message="form.errors.payment_method" />
+                        </div>
+
+                        <div>
+                            <Label for="payment_reference"
+                                >Reference/Confirmation #</Label
+                            >
+                            <Input
+                                id="payment_reference"
+                                v-model="form.payment_reference"
+                                type="text"
+                                class="mt-1"
+                            />
+                            <InputError
+                                :message="form.errors.payment_reference"
+                            />
+                        </div>
+                    </template>
+
+                    <div class="rounded-lg border p-3">
+                        <Label for="discount_type">Discount (optional)</Label>
+                        <p class="mt-0.5 mb-2 text-xs text-muted-foreground">
+                            A discount you add here is submitted for manager
+                            approval before it reduces the guest's bill.
+                        </p>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <Select v-model="form.discount_type">
+                                    <SelectTrigger
+                                        id="discount_type"
+                                        class="mt-1"
+                                    >
+                                        <SelectValue
+                                            placeholder="No discount"
+                                        />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none"
+                                            >No discount</SelectItem
+                                        >
+                                        <SelectItem value="percentage">
+                                            Percentage (%)
+                                        </SelectItem>
+                                        <SelectItem value="fixed">
+                                            Fixed amount
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <InputError
+                                    :message="form.errors.discount_type"
+                                />
+                            </div>
+                            <div v-if="hasDiscount">
+                                <Input
+                                    v-model="form.discount_value"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    class="mt-1"
+                                    :placeholder="
+                                        form.discount_type === 'percentage'
+                                            ? 'e.g. 10'
+                                            : 'e.g. 5000'
+                                    "
+                                />
+                                <InputError
+                                    :message="form.errors.discount_value"
+                                />
+                            </div>
+                        </div>
+                        <div v-if="hasDiscount" class="mt-3">
+                            <Input
+                                v-model="form.discount_reason"
+                                type="text"
+                                class="mt-1"
+                                placeholder="Reason (optional)"
+                            />
+                            <InputError
+                                :message="form.errors.discount_reason"
+                            />
+                        </div>
                     </div>
 
                     <div>
-                        <Label for="payment_reference"
-                            >Reference/Confirmation #</Label
-                        >
-                        <Input
-                            id="payment_reference"
-                            v-model="form.payment_reference"
-                            type="text"
-                            class="mt-1"
+                        <Label for="notes">Notes</Label>
+                        <textarea
+                            id="notes"
+                            v-model="form.notes"
+                            class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                            rows="3"
+                            placeholder="Special requests, preferences..."
                         />
-                        <InputError :message="form.errors.payment_reference" />
+                        <InputError :message="form.errors.notes" />
                     </div>
-                </template>
-
-                <div class="rounded-lg border p-3">
-                    <Label for="discount_type">Discount (optional)</Label>
-                    <p class="mt-0.5 mb-2 text-xs text-muted-foreground">
-                        A discount you add here is submitted for manager
-                        approval before it reduces the guest's bill.
-                    </p>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <Select v-model="form.discount_type">
-                                <SelectTrigger id="discount_type" class="mt-1">
-                                    <SelectValue placeholder="No discount" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value=""
-                                        >No discount</SelectItem
-                                    >
-                                    <SelectItem value="percentage">
-                                        Percentage (%)
-                                    </SelectItem>
-                                    <SelectItem value="fixed">
-                                        Fixed amount (₦)
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <InputError :message="form.errors.discount_type" />
-                        </div>
-                        <div v-if="form.discount_type">
-                            <Input
-                                v-model="form.discount_value"
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                class="mt-1"
-                                :placeholder="
-                                    form.discount_type === 'percentage'
-                                        ? 'e.g. 10'
-                                        : 'e.g. 5000'
-                                "
-                            />
-                            <InputError :message="form.errors.discount_value" />
-                        </div>
-                    </div>
-                    <div v-if="form.discount_type" class="mt-3">
-                        <Input
-                            v-model="form.discount_reason"
-                            type="text"
-                            class="mt-1"
-                            placeholder="Reason (optional)"
-                        />
-                        <InputError :message="form.errors.discount_reason" />
-                    </div>
-                </div>
-
-                <div>
-                    <Label for="notes">Notes</Label>
-                    <textarea
-                        id="notes"
-                        v-model="form.notes"
-                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                        rows="3"
-                        placeholder="Special requests, preferences..."
-                    />
-                    <InputError :message="form.errors.notes" />
                 </div>
             </div>
 
-            <!-- Navigation -->
+            <!-- Navigation (pinned) -->
             <div class="flex gap-2 border-t pt-4">
                 <Button
                     v-if="step > 1"

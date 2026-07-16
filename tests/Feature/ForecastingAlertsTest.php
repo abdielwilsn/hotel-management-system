@@ -11,10 +11,10 @@ use Inertia\Testing\AssertableInertia as Assert;
 
 uses(RefreshDatabase::class);
 
-test('team members can view forecasting page', function () {
+test('managers can view forecasting page', function () {
     $team = Team::factory()->create();
     $user = User::factory()->create();
-    $user->teams()->attach($team, ['role' => 'member']);
+    $user->teams()->attach($team, ['role' => 'admin']);
 
     $this->actingAs($user)
         ->get("/{$team->slug}/forecasts")
@@ -23,6 +23,16 @@ test('team members can view forecasting page', function () {
             ->component('forecasts/Index')
             ->has('forecast')
             ->has('alerts'));
+});
+
+test('receptionists cannot view forecasting page', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+
+    $this->actingAs($user)
+        ->get("/{$team->slug}/forecasts")
+        ->assertForbidden();
 });
 
 test('forecasting includes occupancy and revenue projections', function () {

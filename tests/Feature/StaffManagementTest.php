@@ -8,14 +8,22 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-test('team members can view the staff index page', function () {
+test('managers can view the staff index page', function () {
     $team = Team::factory()->create();
     $user = User::factory()->create();
-    $user->teams()->attach($team, ['role' => 'member']);
+    $user->teams()->attach($team, ['role' => 'admin']);
 
     $response = $this->actingAs($user)->get("/{$team->slug}/staff");
 
     $response->assertStatus(200);
+});
+
+test('receptionists cannot view the staff index page', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+
+    $this->actingAs($user)->get("/{$team->slug}/staff")->assertForbidden();
 });
 
 test('admins can create staff', function () {

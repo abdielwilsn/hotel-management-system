@@ -9,14 +9,24 @@ use Inertia\Testing\AssertableInertia as Assert;
 
 uses(RefreshDatabase::class);
 
-test('team members can view inventory page', function () {
+test('managers can view inventory page', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'admin']);
+
+    $this->actingAs($user)
+        ->get("/{$team->slug}/inventory")
+        ->assertOk();
+});
+
+test('receptionists cannot view inventory page', function () {
     $team = Team::factory()->create();
     $user = User::factory()->create();
     $user->teams()->attach($team, ['role' => 'member']);
 
     $this->actingAs($user)
         ->get("/{$team->slug}/inventory")
-        ->assertOk();
+        ->assertForbidden();
 });
 
 test('inventory page only shows current team data', function () {
