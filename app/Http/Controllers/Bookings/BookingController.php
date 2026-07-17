@@ -142,7 +142,11 @@ class BookingController extends Controller
                         ->where('total_amount', '>', 0);
                 });
             })
-            ->orderByDesc('check_in_date')
+            // Newest booking first, so anything just created is at the top.
+            // id breaks ties deterministically — without it, same-second rows
+            // could repeat or go missing across pages.
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->paginate(20)
             ->withQueryString();
 

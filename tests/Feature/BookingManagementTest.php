@@ -626,3 +626,34 @@ test('bookings index includes folio payment lines and extension history', functi
             ->where('bookings.0.invoice.payments.0.payment_number', 'PAY-FOLIO-1001')
             ->where('bookings.0.extension_history.0.label', 'Added one extra night'));
 });
+
+test('the bookings list shows the newest booking first', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'admin']);
+    $room = Room::factory()->create(['team_id' => $team->id]);
+
+    // Created first, but has the furthest-future stay — it must NOT lead.
+    $oldest = Booking::factory()->create([
+        'team_id' => $team->id,
+        'room_id' => $room->id,
+        'check_in_date' => '2027-01-01',
+        'check_out_date' => '2027-01-05',
+        'created_at' => now()->subDay(),
+    ]);
+
+    $newest = Booking::factory()->create([
+        'team_id' => $team->id,
+        'room_id' => $room->id,
+        'check_in_date' => '2026-01-01',
+        'check_out_date' => '2026-01-05',
+        'created_at' => now(),
+    ]);
+
+    $this->actingAs($user)
+        ->get("/{$team->slug}/bookings")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('bookings.0.id', $newest->id)
+            ->where('bookings.1.id', $oldest->id));
+});
