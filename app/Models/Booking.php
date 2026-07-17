@@ -100,6 +100,23 @@ class Booking extends Model
         return $query->whereIn('status', ['pending', 'confirmed', 'checked_in']);
     }
 
+    /**
+     * Bookings that block the given date range.
+     *
+     * A stay occupies [check_in_date, check_out_date): the checkout day is free
+     * for the next guest, so two stays only clash when the ranges genuinely
+     * overlap. This is the single source of truth shared by booking validation
+     * and the room availability lookup, so the two can never disagree.
+     */
+    public function scopeOverlapping(Builder $query, string $checkInDate, string $checkOutDate): Builder
+    {
+        // whereDate (not where) because the columns are stored as datetimes —
+        // a raw string compare would read "2026-06-05 00:00:00" > "2026-06-05".
+        return $query->active()
+            ->whereDate('check_in_date', '<', $checkOutDate)
+            ->whereDate('check_out_date', '>', $checkInDate);
+    }
+
     public function getNightsAttribute(): int
     {
         return $this->check_in_date->diffInDays($this->check_out_date);

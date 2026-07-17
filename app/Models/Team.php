@@ -39,6 +39,13 @@ class Team extends Model
                 $team->slug = static::generateUniqueTeamSlug($team->name, $team->id);
             }
         });
+
+        // Every team starts with the standard room types, which managers can
+        // then rename, add to, or remove. Hooked here rather than in the create
+        // action so factories and seeders get them too.
+        static::created(function (Team $team) {
+            $team->roomTypes()->createMany(RoomType::DEFAULTS);
+        });
     }
 
     /**
@@ -112,6 +119,16 @@ class Team extends Model
     public function rooms(): HasMany
     {
         return $this->hasMany(Room::class);
+    }
+
+    /**
+     * Get the room types this team offers.
+     *
+     * @return HasMany<RoomType, $this>
+     */
+    public function roomTypes(): HasMany
+    {
+        return $this->hasMany(RoomType::class);
     }
 
     /**

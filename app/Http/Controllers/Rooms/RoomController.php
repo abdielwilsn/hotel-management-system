@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Rooms\SaveRoomRequest;
 use App\Models\Booking;
 use App\Models\Room;
+use App\Models\RoomType;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -13,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -24,7 +26,7 @@ class RoomController extends Controller
 
         $filters = $request->validate([
             'search' => ['nullable', 'string', 'max:255'],
-            'room_type' => ['nullable', 'string', 'in:single,double,suite,deluxe,penthouse'],
+            'room_type' => ['nullable', 'string', Rule::in($current_team->roomTypes()->pluck('slug'))],
             'status' => ['nullable', 'string', 'in:available,reserved,occupied,maintenance,cleaning'],
             'floor' => ['nullable', 'integer', 'min:1'],
             'min_capacity' => ['nullable', 'integer', 'min:1'],
@@ -167,7 +169,7 @@ class RoomController extends Controller
 
         $rooms = $rooms->values();
 
-        $roomTypes = ['single', 'double', 'suite', 'deluxe', 'penthouse'];
+        $roomTypes = $this->roomTypesFor($current_team);
         $statuses = ['available', 'occupied', 'maintenance', 'cleaning'];
 
         $occupiedCount = $rooms->where('status', 'occupied')->count();
@@ -213,7 +215,7 @@ class RoomController extends Controller
 
         Gate::authorize('update', [$room, $current_team]);
 
-        $roomTypes = ['single', 'double', 'suite', 'deluxe', 'penthouse'];
+        $roomTypes = $this->roomTypesFor($current_team);
         $statuses = ['available', 'occupied', 'maintenance', 'cleaning'];
 
         return Inertia::render('rooms/Edit', [
@@ -254,5 +256,30 @@ class RoomController extends Controller
         if ($room->team_id !== $team->id) {
             abort(403);
         }
+    }
+
+    /**
+     * The team's room types, with how many rooms use each one so the manager
+     * UI can explain why a type can't be deleted.
+     *
+     * @return array<int, array{id: int, slug: string, name: string, rooms_count: int}>
+     */
+    private function roomTypesFor(Team $team): array
+    {
+        $counts = $team->rooms()
+            ->selectRaw('room_type, count(*) as aggregate')
+            ->groupBy('room_type')
+            ->pluck('aggregate', 'room_type');
+
+        return $team->roomTypes()
+            ->orderBy('name')
+            ->get(['id', 'slug', 'name'])
+            ->map(fn (RoomType $type): array => [
+                'id' => $type->id,
+                'slug' => $type->slug,
+                'name' => $type->name,
+                'rooms_count' => (int) ($counts[$type->slug] ?? 0),
+            ])
+            ->all();
     }
 }

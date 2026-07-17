@@ -91,22 +91,17 @@ class SaveBookingRequest extends FormRequest
                             );
                         }
 
-                        // Check for overlapping bookings
-                        $checkInDate = Carbon::parse((string) $this->input('check_in_date'));
-                        $checkOutDate = Carbon::parse((string) $this->input('check_out_date'));
+                        // Check for overlapping bookings. Shares the Booking::overlapping()
+                        // scope with the room availability lookup so the room picker and
+                        // this validation can never disagree.
                         $bookingId = $this->route('booking')?->id;
 
                         $overlap = Booking::query()
                             ->where('room_id', $room->id)
-                            ->whereIn('status', ['pending', 'confirmed', 'checked_in'])
-                            ->where(function ($query) use ($checkInDate, $checkOutDate): void {
-                                $query->whereBetween('check_in_date', [$checkInDate, $checkOutDate->subDay()])
-                                    ->orWhereBetween('check_out_date', [$checkInDate->addDay(), $checkOutDate])
-                                    ->orWhere(function ($q) use ($checkInDate, $checkOutDate): void {
-                                        $q->where('check_in_date', '<=', $checkInDate)
-                                            ->where('check_out_date', '>=', $checkOutDate);
-                                    });
-                            });
+                            ->overlapping(
+                                (string) $this->input('check_in_date'),
+                                (string) $this->input('check_out_date'),
+                            );
 
                         if ($bookingId) {
                             $overlap->where('id', '!=', $bookingId);

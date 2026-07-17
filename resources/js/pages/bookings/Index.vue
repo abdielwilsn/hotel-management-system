@@ -667,7 +667,6 @@ const deleteBooking = () => {
         <!-- Booking Wizard -->
         <BookingWizard
             :open="showBookingWizard"
-            :rooms="rooms"
             :team-slug="props.team.slug"
             @close="showBookingWizard = false"
             @submit="

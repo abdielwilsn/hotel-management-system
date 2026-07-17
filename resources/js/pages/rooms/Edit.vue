@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { useForm, Head, Link, usePage } from '@inertiajs/vue3';
+import { useForm, Link } from '@inertiajs/vue3';
 import { ChevronLeft, Trash2, Save } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { edit, index, update, destroy } from '@/routes/rooms';
+import { index, update, destroy } from '@/routes/rooms';
 import type { Team } from '@/types';
 
 type Room = {
@@ -36,9 +36,16 @@ type Room = {
     description: string | null;
 };
 
+type RoomTypeOption = {
+    id: number;
+    slug: string;
+    name: string;
+    rooms_count: number;
+};
+
 type Props = {
     room: Room;
-    roomTypes: string[];
+    roomTypes: RoomTypeOption[];
     statuses: string[];
     team: {
         id: number;
@@ -49,11 +56,8 @@ type Props = {
 
 const props = defineProps<Props>();
 
-const page = usePage();
-const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
-
 defineOptions({
-    layout: (props: { currentTeam?: Team | null }) => ({
+    layout: (props: { currentTeam?: Team | null; room?: Room }) => ({
         breadcrumbs: [
             {
                 title: 'Rooms',
@@ -81,17 +85,8 @@ const form = useForm({
 
 const deleteForm = useForm({});
 
-const roomTypeLabel = (type: string) => {
-    const labels: Record<string, string> = {
-        single: 'Single',
-        double: 'Double',
-        suite: 'Suite',
-        deluxe: 'Deluxe',
-        penthouse: 'Penthouse',
-    };
-
-    return labels[type] || type;
-};
+const statusLabel = (value: string) =>
+    value.replace('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 
 const statusColor = (status: string) => {
     const colors: Record<string, string> = {
@@ -105,12 +100,6 @@ const statusColor = (status: string) => {
 };
 
 const submit = () => {
-    const payload = {
-        ...form.data(),
-        floor: Number(form.floor),
-        capacity: Number(form.capacity),
-        price_per_night: Number(form.price_per_night),
-    };
     form.patch(update([props.team.slug, props.room.id]).url);
 };
 
@@ -200,10 +189,10 @@ const deleteRoom = () => {
                                     <SelectContent>
                                         <SelectItem
                                             v-for="type in roomTypes"
-                                            :key="type"
-                                            :value="type"
+                                            :key="type.id"
+                                            :value="type.slug"
                                         >
-                                            {{ roomTypeLabel(type) }}
+                                            {{ type.name }}
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>
@@ -268,7 +257,7 @@ const deleteRoom = () => {
                                             :key="s"
                                             :value="s"
                                         >
-                                            {{ roomTypeLabel(s) }}
+                                            {{ statusLabel(s) }}
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>

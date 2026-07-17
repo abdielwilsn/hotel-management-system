@@ -33,7 +33,9 @@ class SaveRoomRequest extends FormRequest
                 Rule::unique('rooms', 'room_number')->where('team_id', $team->id)->ignore($this->route('room')?->id),
             ],
             'floor' => ['required', 'integer', 'min:1', 'max:99'],
-            'room_type' => ['required', 'in:single,double,suite,deluxe,penthouse'],
+            // Room types are curated per team, so the allowed values come from
+            // the database rather than a hardcoded list.
+            'room_type' => ['required', Rule::in($team->roomTypes()->pluck('slug'))],
             'capacity' => ['required', 'integer', 'min:1', 'max:10'],
             'price_per_night' => ['required', 'numeric', 'min:0'],
             'status' => ['required', 'in:available,occupied,maintenance,cleaning'],

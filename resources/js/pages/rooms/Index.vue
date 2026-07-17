@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { useForm, Link, router, usePage } from '@inertiajs/vue3';
-import { Plus, Home, Trash2, Edit, CalendarPlus } from 'lucide-vue-next';
+import { Plus, Home, Trash2, Edit, CalendarPlus, Tags } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
+import BookingWizard from '@/components/BookingWizard.vue';
 import FilterSheet from '@/components/FilterSheet.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -25,7 +26,11 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { useFormatters } from '@/lib/format';
-import { store as storeBooking } from '@/routes/bookings';
+import {
+    destroy as destroyRoomType,
+    store as storeRoomType,
+    update as updateRoomType,
+} from '@/routes/room-types';
 import { index, store, edit, destroy } from '@/routes/rooms';
 import type { Team } from '@/types';
 
@@ -47,9 +52,16 @@ type Room = {
     } | null;
 };
 
+type RoomTypeOption = {
+    id: number;
+    slug: string;
+    name: string;
+    rooms_count: number;
+};
+
 type Props = {
     rooms: Room[];
-    roomTypes: string[];
+    roomTypes: RoomTypeOption[];
     statuses: string[];
     filters: {
         search?: string | null;
@@ -133,23 +145,6 @@ const form = useForm({
 });
 
 const deleteForm = useForm({});
-const bookingForm = useForm({
-    room_id: '',
-    guest_name: '',
-    guest_email: '',
-    guest_phone: '',
-    number_of_guests: '1',
-    check_in_date: new Date().toISOString().split('T')[0],
-    check_out_date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
-    status: 'pending',
-    notes: '',
-    process_payment: false,
-    payment_amount: '',
-    payment_method: 'cash',
-    payment_date: new Date().toISOString().split('T')[0],
-    payment_reference: '',
-    payment_notes: '',
-});
 
 const filterStatuses = computed(() => [
     'available',
@@ -189,17 +184,10 @@ const activeFilterCount = computed(
         (filtersForm.max_price ? 1 : 0),
 );
 
-const roomTypeLabel = (type: string) => {
-    const labels: Record<string, string> = {
-        single: 'Single',
-        double: 'Double',
-        suite: 'Suite',
-        deluxe: 'Deluxe',
-        penthouse: 'Penthouse',
-    };
-
-    return labels[type] || type;
-};
+// Types are curated per team, so labels come from the data rather than a
+// hardcoded map. Fall back to the raw slug for rooms on a since-removed type.
+const roomTypeLabel = (slug: string) =>
+    props.roomTypes.find((type) => type.slug === slug)?.name ?? slug;
 
 const statusColor = (status: string) => {
     const colors: Record<string, string> = {
@@ -267,26 +255,52 @@ const formatDate = (date: string | null) => {
 
 const openBookRoomDialog = (room: Room) => {
     roomToBook.value = room;
-    bookingForm.reset();
-    bookingForm.room_id = String(room.id);
-    bookingForm.guest_name = '';
-    bookingForm.guest_email = '';
-    bookingForm.guest_phone = '';
-    bookingForm.number_of_guests = '1';
-    bookingForm.check_in_date = new Date().toISOString().split('T')[0];
-    bookingForm.check_out_date = new Date(Date.now() + 86400000)
-        .toISOString()
-        .split('T')[0];
-    bookingForm.status = 'pending';
-    bookingForm.notes = '';
-    bookingForm.process_payment = false;
-    bookingForm.payment_amount = '';
-    bookingForm.payment_method = 'cash';
-    bookingForm.payment_date = new Date().toISOString().split('T')[0];
-    bookingForm.payment_reference = '';
-    bookingForm.payment_notes = '';
     showBookRoomDialog.value = true;
 };
+
+/* ------------------------------------------------------------------ *
+ * Room types — managers curate the list the whole hotel picks from.
+ * ------------------------------------------------------------------ */
+const showTypesDialog = ref(false);
+const editingTypeId = ref<number | null>(null);
+
+const newTypeForm = useForm({ name: '' });
+const editTypeForm = useForm({ name: '' });
+const deleteTypeForm = useForm({});
+
+const addRoomType = () => {
+    newTypeForm.post(storeRoomType(props.team.slug).url, {
+        preserveScroll: true,
+        onSuccess: () => newTypeForm.reset(),
+    });
+};
+
+const startEditingType = (type: RoomTypeOption) => {
+    editingTypeId.value = type.id;
+    editTypeForm.clearErrors();
+    editTypeForm.name = type.name;
+};
+
+const saveRoomType = (type: RoomTypeOption) => {
+    editTypeForm.patch(updateRoomType([props.team.slug, type.id]).url, {
+        preserveScroll: true,
+        onSuccess: () => {
+            editingTypeId.value = null;
+        },
+    });
+};
+
+const deleteRoomType = (type: RoomTypeOption) => {
+    deleteTypeForm.delete(destroyRoomType([props.team.slug, type.id]).url, {
+        preserveScroll: true,
+    });
+};
+
+// The controller rejects deleting a type that's still in use; that error
+// arrives on the shared error bag rather than on this field-less form.
+const typeDeletionError = computed(
+    () => (page.props.errors as Record<string, string>)?.room_type,
+);
 
 const submit = () => {
     form.post(store(props.team.slug).url, {
@@ -306,15 +320,6 @@ const deleteRoom = () => {
         onSuccess: () => {
             showDeleteDialog.value = false;
             roomToDelete.value = null;
-        },
-    });
-};
-
-const createBookingForRoom = () => {
-    bookingForm.post(storeBooking(props.team.slug).url, {
-        onSuccess: () => {
-            showBookRoomDialog.value = false;
-            roomToBook.value = null;
         },
     });
 };
@@ -355,10 +360,10 @@ const createBookingForRoom = () => {
                         <SelectItem value="all">Any type</SelectItem>
                         <SelectItem
                             v-for="type in roomTypes"
-                            :key="type"
-                            :value="type"
+                            :key="type.id"
+                            :value="type.slug"
                         >
-                            {{ roomTypeLabel(type) }}
+                            {{ type.name }}
                         </SelectItem>
                     </SelectContent>
                 </Select>
@@ -491,10 +496,10 @@ const createBookingForRoom = () => {
                                 <SelectContent>
                                     <SelectItem
                                         v-for="type in roomTypes"
-                                        :key="type"
-                                        :value="type"
+                                        :key="type.id"
+                                        :value="type.slug"
                                     >
-                                        {{ roomTypeLabel(type) }}
+                                        {{ type.name }}
                                     </SelectItem>
                                 </SelectContent>
                             </Select>
@@ -599,7 +604,15 @@ const createBookingForRoom = () => {
         </Card>
 
         <!-- Create Button -->
-        <div v-else-if="isAdmin" class="flex justify-end">
+        <div v-else-if="isAdmin" class="flex flex-wrap justify-end gap-2">
+            <Button
+                variant="outline"
+                class="gap-2"
+                @click="showTypesDialog = true"
+            >
+                <Tags class="h-4 w-4" />
+                Manage types
+            </Button>
             <Button @click="showCreateForm = true" class="gap-2">
                 <Plus class="h-4 w-4" />
                 Add Room
@@ -798,177 +811,131 @@ const createBookingForRoom = () => {
             </DialogContent>
         </Dialog>
 
-        <Dialog
+        <!-- Same wizard the bookings page uses, pre-selecting this room. -->
+        <BookingWizard
             :open="showBookRoomDialog"
-            @update:open="showBookRoomDialog = $event"
+            :team-slug="props.team.slug"
+            :preselect-room-id="roomToBook?.id ?? null"
+            @close="
+                showBookRoomDialog = false;
+                roomToBook = null;
+            "
+            @submit="
+                showBookRoomDialog = false;
+                roomToBook = null;
+            "
+        />
+
+        <!-- Manage room types (managers only) -->
+        <Dialog
+            v-if="isAdmin"
+            :open="showTypesDialog"
+            @update:open="showTypesDialog = $event"
         >
             <DialogContent class="max-h-[90dvh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Create Booking</DialogTitle>
+                    <DialogTitle>Room types</DialogTitle>
                     <DialogDescription>
-                        Create a booking for
-                        <strong>Room {{ roomToBook?.room_number }}</strong
-                        >.
+                        These are the types staff choose from when adding a
+                        room. Renaming one updates it everywhere.
                     </DialogDescription>
                 </DialogHeader>
 
-                <form @submit.prevent="createBookingForRoom" class="space-y-3">
-                    <div>
-                        <Label for="room_booking_guest_name"
-                            >Guest Name *</Label
-                        >
-                        <Input
-                            id="room_booking_guest_name"
-                            v-model="bookingForm.guest_name"
-                            type="text"
-                        />
-                        <InputError
-                            :message="bookingForm.errors.guest_name"
-                            class="mt-2"
-                        />
-                    </div>
+                <!-- Deletion errors surface here -->
+                <InputError :message="typeDeletionError" />
 
-                    <div>
-                        <Label for="room_booking_guest_email"
-                            >Guest Email *</Label
-                        >
-                        <Input
-                            id="room_booking_guest_email"
-                            v-model="bookingForm.guest_email"
-                            type="email"
-                        />
-                        <InputError
-                            :message="bookingForm.errors.guest_email"
-                            class="mt-2"
-                        />
-                    </div>
-
-                    <div>
-                        <Label for="room_booking_guest_phone"
-                            >Guest Phone</Label
-                        >
-                        <Input
-                            id="room_booking_guest_phone"
-                            v-model="bookingForm.guest_phone"
-                            type="text"
-                        />
-                        <InputError
-                            :message="bookingForm.errors.guest_phone"
-                            class="mt-2"
-                        />
-                    </div>
-
-                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                            <Label for="room_booking_guests">Guests *</Label>
-                            <Input
-                                id="room_booking_guests"
-                                v-model="bookingForm.number_of_guests"
-                                type="number"
-                                min="1"
-                                step="1"
-                            />
-                            <InputError
-                                :message="bookingForm.errors.number_of_guests"
-                                class="mt-2"
-                            />
-                        </div>
-                        <div>
-                            <Label for="room_booking_status">Status *</Label>
-                            <Select v-model="bookingForm.status">
-                                <SelectTrigger
-                                    id="room_booking_status"
-                                    class="mt-1"
-                                >
-                                    <SelectValue placeholder="Select status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="pending"
-                                        >Pending</SelectItem
-                                    >
-                                    <SelectItem value="confirmed"
-                                        >Confirmed</SelectItem
-                                    >
-                                    <SelectItem value="checked_in"
-                                        >Checked In</SelectItem
-                                    >
-                                </SelectContent>
-                            </Select>
-                            <InputError
-                                :message="bookingForm.errors.status"
-                                class="mt-2"
-                            />
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                            <Label for="room_booking_check_in"
-                                >Check-in *</Label
+                <ul class="divide-y rounded-lg border">
+                    <li
+                        v-for="type in roomTypes"
+                        :key="type.id"
+                        class="flex items-center gap-2 p-3"
+                    >
+                        <template v-if="editingTypeId === type.id">
+                            <div class="min-w-0 flex-1">
+                                <Input
+                                    v-model="editTypeForm.name"
+                                    type="text"
+                                    autofocus
+                                    @keyup.enter="saveRoomType(type)"
+                                />
+                                <InputError
+                                    :message="editTypeForm.errors.name"
+                                />
+                            </div>
+                            <Button
+                                size="sm"
+                                :disabled="editTypeForm.processing"
+                                @click="saveRoomType(type)"
                             >
-                            <Input
-                                id="room_booking_check_in"
-                                v-model="bookingForm.check_in_date"
-                                type="date"
-                            />
-                            <InputError
-                                :message="bookingForm.errors.check_in_date"
-                                class="mt-2"
-                            />
-                        </div>
-                        <div>
-                            <Label for="room_booking_check_out"
-                                >Check-out *</Label
+                                Save
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                @click="editingTypeId = null"
                             >
-                            <Input
-                                id="room_booking_check_out"
-                                v-model="bookingForm.check_out_date"
-                                type="date"
-                            />
-                            <InputError
-                                :message="bookingForm.errors.check_out_date"
-                                class="mt-2"
-                            />
-                        </div>
-                    </div>
+                                Cancel
+                            </Button>
+                        </template>
 
-                    <div>
-                        <Label for="room_booking_notes">Notes</Label>
+                        <template v-else>
+                            <div class="min-w-0 flex-1">
+                                <p class="truncate font-medium">
+                                    {{ type.name }}
+                                </p>
+                                <p class="text-xs text-muted-foreground">
+                                    {{ type.rooms_count }} room{{
+                                        type.rooms_count === 1 ? '' : 's'
+                                    }}
+                                </p>
+                            </div>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                :aria-label="`Rename ${type.name}`"
+                                @click="startEditingType(type)"
+                            >
+                                <Edit class="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                class="text-red-600 hover:bg-red-50 hover:text-red-700"
+                                :disabled="
+                                    type.rooms_count > 0 ||
+                                    deleteTypeForm.processing
+                                "
+                                :title="
+                                    type.rooms_count > 0
+                                        ? 'Still used by rooms — move them first'
+                                        : `Delete ${type.name}`
+                                "
+                                :aria-label="`Delete ${type.name}`"
+                                @click="deleteRoomType(type)"
+                            >
+                                <Trash2 class="h-3.5 w-3.5" />
+                            </Button>
+                        </template>
+                    </li>
+                </ul>
+
+                <form class="flex gap-2" @submit.prevent="addRoomType">
+                    <div class="min-w-0 flex-1">
                         <Input
-                            id="room_booking_notes"
-                            v-model="bookingForm.notes"
+                            v-model="newTypeForm.name"
                             type="text"
-                            placeholder="Optional booking notes"
+                            placeholder="Add a type, e.g. Cabana"
                         />
-                        <InputError
-                            :message="bookingForm.errors.notes"
-                            class="mt-2"
-                        />
-                        <InputError
-                            :message="bookingForm.errors.room_id"
-                            class="mt-2"
-                        />
+                        <InputError :message="newTypeForm.errors.name" />
                     </div>
-
-                    <div class="flex justify-end gap-3 pt-2">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            @click="showBookRoomDialog = false"
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            type="submit"
-                            :disabled="bookingForm.processing"
-                        >
-                            {{
-                                bookingForm.processing
-                                    ? 'Creating...'
-                                    : 'Create Booking'
-                            }}
-                        </Button>
-                    </div>
+                    <Button
+                        type="submit"
+                        class="gap-2"
+                        :disabled="!newTypeForm.name || newTypeForm.processing"
+                    >
+                        <Plus class="h-4 w-4" />
+                        Add
+                    </Button>
                 </form>
             </DialogContent>
         </Dialog>

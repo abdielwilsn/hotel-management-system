@@ -15,7 +15,9 @@ use App\Http\Controllers\Pos\PosMenuController;
 use App\Http\Controllers\Pos\PosOrderController;
 use App\Http\Controllers\Pos\PosOutletController;
 use App\Http\Controllers\Reports\ReportController;
+use App\Http\Controllers\Rooms\RoomAvailabilityController;
 use App\Http\Controllers\Rooms\RoomController;
+use App\Http\Controllers\Rooms\RoomTypeController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Staff\StaffController;
 use App\Http\Controllers\Teams\TeamInvitationController;
@@ -48,6 +50,10 @@ Route::prefix('{current_team}')
             Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
             Route::get('rooms', [RoomController::class, 'index'])->name('rooms.index');
+
+            // Powers the booking wizard's room picker: which rooms are free for
+            // a chosen date range.
+            Route::get('rooms/availability', RoomAvailabilityController::class)->name('rooms.availability');
 
             Route::get('bookings', [BookingController::class, 'index'])->name('bookings.index');
 
@@ -94,6 +100,11 @@ Route::prefix('{current_team}')
                 Route::get('staff/{staff}/edit', [StaffController::class, 'edit'])->name('staff.edit');
                 Route::patch('staff/{staff}', [StaffController::class, 'update'])->name('staff.update');
                 Route::delete('staff/{staff}', [StaffController::class, 'destroy'])->name('staff.destroy');
+
+                // Managers curate the room types their hotel sells.
+                Route::post('room-types', [RoomTypeController::class, 'store'])->name('room-types.store');
+                Route::patch('room-types/{room_type}', [RoomTypeController::class, 'update'])->name('room-types.update');
+                Route::delete('room-types/{room_type}', [RoomTypeController::class, 'destroy'])->name('room-types.destroy');
 
                 Route::post('rooms', [RoomController::class, 'store'])->name('rooms.store');
                 Route::get('rooms/{room}/edit', [RoomController::class, 'edit'])->name('rooms.edit');
