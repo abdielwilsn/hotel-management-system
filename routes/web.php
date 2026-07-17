@@ -107,9 +107,11 @@ Route::prefix('{current_team}')
                 Route::delete('room-types/{room_type}', [RoomTypeController::class, 'destroy'])->name('room-types.destroy');
 
                 Route::post('rooms', [RoomController::class, 'store'])->name('rooms.store');
-                Route::get('rooms/{room}/edit', [RoomController::class, 'edit'])->name('rooms.edit');
-                Route::patch('rooms/{room}', [RoomController::class, 'update'])->name('rooms.update');
-                Route::delete('rooms/{room}', [RoomController::class, 'destroy'])->name('rooms.destroy');
+                // Constrained to numbers so literal paths like rooms/availability
+                // can never be swallowed by the {room} wildcard.
+                Route::get('rooms/{room}/edit', [RoomController::class, 'edit'])->name('rooms.edit')->whereNumber('room');
+                Route::patch('rooms/{room}', [RoomController::class, 'update'])->name('rooms.update')->whereNumber('room');
+                Route::delete('rooms/{room}', [RoomController::class, 'destroy'])->name('rooms.destroy')->whereNumber('room');
 
                 Route::delete('bookings/{booking}', [BookingController::class, 'destroy'])->name('bookings.destroy');
 
