@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Teams;
 
 use App\Actions\Teams\CreateTeam;
+use App\Enums\Ability;
+use App\Enums\DataScope;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\DeleteTeamRequest;
@@ -57,14 +59,19 @@ class TeamController extends Controller
                 'isPersonal' => $team->is_personal,
                 'currency' => $team->currency,
             ],
-            'members' => $team->members()->get()->map(fn ($member) => [
-                'id' => $member->id,
-                'name' => $member->name,
-                'email' => $member->email,
-                'avatar' => $member->avatar ?? null,
-                'role' => $member->pivot->role->value,
-                'role_label' => $member->pivot->role?->label(),
-            ]),
+            'members' => $team->members()
+                ->with(['departments' => fn ($query) => $query->where('department_user.team_id', $team->id)])
+                ->get()
+                ->map(fn ($member) => [
+                    'id' => $member->id,
+                    'name' => $member->name,
+                    'email' => $member->email,
+                    'avatar' => $member->avatar ?? null,
+                    'role' => $member->pivot->role->value,
+                    'role_label' => $member->pivot->role?->label(),
+                    'data_scope' => $member->pivot->data_scope->value,
+                    'department_ids' => $member->departments->pluck('id'),
+                ]),
             'invitations' => $team->invitations()
                 ->whereNull('accepted_at')
                 ->get()
@@ -77,6 +84,11 @@ class TeamController extends Controller
                 ]),
             'permissions' => $user->toTeamPermissions($team),
             'availableRoles' => TeamRole::assignable(),
+            'canManagePermissions' => $user->hasAbility(Ability::ManagePermissions, $team),
+            'departments' => $team->departments()
+                ->orderBy('name')
+                ->get(['id', 'name']),
+            'dataScopes' => DataScope::assignable(),
         ]);
     }
 

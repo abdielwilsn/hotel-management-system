@@ -2,7 +2,7 @@
 
 namespace App\Policies;
 
-use App\Enums\TeamRole;
+use App\Enums\Ability;
 use App\Models\Room;
 use App\Models\Team;
 use App\Models\User;
@@ -11,27 +11,27 @@ class RoomPolicy
 {
     public function viewAny(User $user, Team $team): bool
     {
-        return $user->belongsToTeam($team);
+        return $user->hasAbility(Ability::ViewRooms, $team);
     }
 
     public function view(User $user, Room $room, Team $team): bool
     {
-        return $room->team_id === $team->id && $user->belongsToTeam($team);
+        return $room->team_id === $team->id && $user->hasAbility(Ability::ViewRooms, $team);
     }
 
     public function create(User $user, Team $team): bool
     {
-        return $this->hasAdminPrivileges($user, $team);
+        return $user->hasAbility(Ability::ManageRooms, $team);
     }
 
     public function update(User $user, Room $room, Team $team): bool
     {
-        return $room->team_id === $team->id && $this->hasAdminPrivileges($user, $team);
+        return $room->team_id === $team->id && $user->hasAbility(Ability::ManageRooms, $team);
     }
 
     public function delete(User $user, Room $room, Team $team): bool
     {
-        return $room->team_id === $team->id && $this->hasAdminPrivileges($user, $team);
+        return $room->team_id === $team->id && $user->hasAbility(Ability::ManageRooms, $team);
     }
 
     public function restore(User $user, Room $room): bool
@@ -42,12 +42,5 @@ class RoomPolicy
     public function forceDelete(User $user, Room $room): bool
     {
         return false;
-    }
-
-    private function hasAdminPrivileges(User $user, Team $team): bool
-    {
-        $role = $user->teamRole($team);
-
-        return $role->isAtLeast(TeamRole::Admin);
     }
 }

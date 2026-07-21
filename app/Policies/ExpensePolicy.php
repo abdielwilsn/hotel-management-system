@@ -2,7 +2,7 @@
 
 namespace App\Policies;
 
-use App\Enums\TeamRole;
+use App\Enums\Ability;
 use App\Models\Expense;
 use App\Models\Team;
 use App\Models\User;
@@ -14,7 +14,7 @@ class ExpensePolicy
      */
     public function viewAny(User $user, Team $team): bool
     {
-        return $user->belongsToTeam($team);
+        return $user->hasAbility(Ability::ViewExpenses, $team);
     }
 
     /**
@@ -22,7 +22,7 @@ class ExpensePolicy
      */
     public function view(User $user, Expense $expense, Team $team): bool
     {
-        return $expense->team_id === $team->id && $user->belongsToTeam($team);
+        return $expense->team_id === $team->id && $user->hasAbility(Ability::ViewExpenses, $team);
     }
 
     /**
@@ -30,7 +30,7 @@ class ExpensePolicy
      */
     public function create(User $user, Team $team): bool
     {
-        return $this->hasAdminPrivileges($user, $team);
+        return $user->hasAbility(Ability::ManageExpenses, $team);
     }
 
     /**
@@ -38,7 +38,7 @@ class ExpensePolicy
      */
     public function update(User $user, Expense $expense, Team $team): bool
     {
-        return $expense->team_id === $team->id && $this->hasAdminPrivileges($user, $team);
+        return $expense->team_id === $team->id && $user->hasAbility(Ability::ManageExpenses, $team);
     }
 
     /**
@@ -46,7 +46,7 @@ class ExpensePolicy
      */
     public function delete(User $user, Expense $expense, Team $team): bool
     {
-        return $expense->team_id === $team->id && $this->hasAdminPrivileges($user, $team);
+        return $expense->team_id === $team->id && $user->hasAbility(Ability::ManageExpenses, $team);
     }
 
     /**
@@ -63,10 +63,5 @@ class ExpensePolicy
     public function forceDelete(User $user, Expense $expense): bool
     {
         return false;
-    }
-
-    private function hasAdminPrivileges(User $user, Team $team): bool
-    {
-        return $user->teamRole($team)->isAtLeast(TeamRole::Admin);
     }
 }

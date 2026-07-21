@@ -2,7 +2,7 @@
 
 namespace App\Http\Middleware;
 
-use App\Enums\TeamRole;
+use App\Enums\Ability;
 use App\Models\Team;
 use App\Models\User;
 use Closure;
@@ -22,7 +22,7 @@ class EnsureTeamMembership
 
         abort_if(! $user || ! $team || ! $user->belongsToTeam($team), 403);
 
-        $this->ensureTeamMemberHasRequiredRole($user, $team, $minimumRole);
+        $this->ensureTeamMemberHasRequiredAccess($user, $team, $minimumRole);
 
         if ($request->route('current_team') && ! $user->isCurrentTeam($team)) {
             $user->switchTeam($team);
@@ -32,24 +32,24 @@ class EnsureTeamMembership
     }
 
     /**
-     * Ensure the given user has at least the given role, if applicable.
+     * Ensure the user may reach this group of routes.
+     *
+     * Route groups ask for a coarse level of access rather than a specific role,
+     * so that a manager can grant a POS-only user the run of the hotel modules
+     * by editing their role instead of needing a code change here.
      */
-    protected function ensureTeamMemberHasRequiredRole(User $user, Team $team, ?string $minimumRole): void
+    protected function ensureTeamMemberHasRequiredAccess(User $user, Team $team, ?string $requiredAccess): void
     {
-        if ($minimumRole === null) {
+        if ($requiredAccess === null) {
             return;
         }
 
-        $role = $user->teamRole($team);
+        $ability = match ($requiredAccess) {
+            'member' => Ability::AccessHotel,
+            default => Ability::tryFrom($requiredAccess),
+        };
 
-        $requiredRole = TeamRole::tryFrom($minimumRole);
-
-        abort_if(
-            $requiredRole === null ||
-            $role === null ||
-            ! $role->isAtLeast($requiredRole),
-            403,
-        );
+        abort_if($ability === null || ! $user->hasAbility($ability, $team), 403);
     }
 
     /**

@@ -12,6 +12,7 @@ declare module 'vite/client' {
         readonly env: ImportMetaEnv;
         readonly glob: <T>(pattern: string) => Record<string, () => Promise<T>>;
     }
+    
 }
 
 declare module '@inertiajs/core' {
@@ -22,6 +23,8 @@ declare module '@inertiajs/core' {
             sidebarOpen: boolean;
             currentTeam: Team | null;
             teams: Team[];
+            /** Ability values the user holds on their current team. */
+            abilities: string[];
             [key: string]: unknown;
         };
     }

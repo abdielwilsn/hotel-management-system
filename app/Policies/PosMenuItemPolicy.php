@@ -2,7 +2,7 @@
 
 namespace App\Policies;
 
-use App\Enums\TeamRole;
+use App\Enums\Ability;
 use App\Models\PosMenuItem;
 use App\Models\Team;
 use App\Models\User;
@@ -11,26 +11,21 @@ class PosMenuItemPolicy
 {
     public function viewAny(User $user, Team $team): bool
     {
-        return $user->belongsToTeam($team);
+        return $user->hasAbility(Ability::OperatePos, $team);
     }
 
     public function create(User $user, Team $team): bool
     {
-        return $this->hasAdminPrivileges($user, $team);
+        return $user->hasAbility(Ability::ManagePos, $team);
     }
 
     public function update(User $user, PosMenuItem $item, Team $team): bool
     {
-        return $item->team_id === $team->id && $this->hasAdminPrivileges($user, $team);
+        return $item->team_id === $team->id && $user->hasAbility(Ability::ManagePos, $team);
     }
 
     public function delete(User $user, PosMenuItem $item, Team $team): bool
     {
-        return $item->team_id === $team->id && $this->hasAdminPrivileges($user, $team);
-    }
-
-    private function hasAdminPrivileges(User $user, Team $team): bool
-    {
-        return $user->teamRole($team)?->isAtLeast(TeamRole::Admin) ?? false;
+        return $item->team_id === $team->id && $user->hasAbility(Ability::ManagePos, $team);
     }
 }

@@ -7,6 +7,7 @@ use App\Models\Payment;
 use App\Models\Room;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -53,6 +54,11 @@ test('authenticated users can visit the dashboard', function () {
 });
 
 test('dashboard metric cards are dynamic and team scoped', function () {
+    // "New Bookings" counts the current calendar week, and this test places
+    // bookings a day back. Freeze to midweek so the run doesn't break every
+    // Monday, when yesterday belongs to the previous week.
+    $this->travelTo(Carbon::parse('2026-06-17 09:00:00')); // Wednesday
+
     $user = User::factory()->create();
     $team = $user->currentTeam;
 

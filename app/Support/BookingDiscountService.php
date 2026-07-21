@@ -2,7 +2,7 @@
 
 namespace App\Support;
 
-use App\Enums\TeamRole;
+use App\Enums\Ability;
 use App\Models\Booking;
 use App\Models\BookingDiscount;
 use App\Models\Team;
@@ -14,14 +14,15 @@ class BookingDiscountService
     /**
      * Record a discount request for a booking.
      *
-     * Front-desk (Member) requests are stored as `pending` and do not touch the bill.
-     * A manager (Admin/Owner) request is auto-approved and applied immediately.
+     * A request from someone who cannot review discounts is stored as `pending`
+     * and does not touch the bill. A reviewer's own request is auto-approved and
+     * applied immediately, since they could simply approve it themselves.
      *
      * @param  array{type: string, value: float|int|string, reason?: string|null}  $data
      */
     public function request(Team $team, Booking $booking, User $actor, array $data): BookingDiscount
     {
-        $isManager = $actor->teamRole($team)?->isAtLeast(TeamRole::Admin) ?? false;
+        $isManager = $actor->hasAbility(Ability::ReviewDiscounts, $team);
 
         return DB::transaction(function () use ($team, $booking, $actor, $data, $isManager): BookingDiscount {
             $this->cancelPending($booking);

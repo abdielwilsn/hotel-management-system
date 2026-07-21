@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Bookings;
 
+use App\Enums\Ability;
+use App\Enums\BookingStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Bookings\CheckoutBookingRequest;
 use App\Http\Requests\Bookings\ExtendBookingStayRequest;
@@ -13,7 +15,10 @@ use App\Models\Payment;
 use App\Models\Room;
 use App\Models\Team;
 use App\Support\BookingDiscountService;
+use App\Support\BookingInvoiceService;
+use App\Support\BookingStayService;
 use App\Support\PaginationMeta;
+use App\Support\StayPolicy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -49,6 +54,7 @@ class BookingController extends Controller
                 'updatedBy:id,name',
                 'activeDiscount.requestedBy:id,name',
                 'activeDiscount.reviewedBy:id,name',
+                'activeStayAdjustment.requestedBy:id,name',
                 'invoice' => function ($query): void {
                     $query->select([
                         'invoices.id',
@@ -252,22 +258,28 @@ class BookingController extends Controller
                 'calendarEnd' => $calendarEnd->toDateString(),
             ],
             'team' => $current_team->only('id', 'slug', 'name'),
+            'statusLabels' => BookingStatus::labels(),
+            'creatableStatuses' => BookingStatus::creatable(),
+            'stayPolicy' => [
+                'check_in_time' => $current_team->check_in_time ?? StayPolicy::DEFAULT_CHECK_IN_TIME,
+                'check_out_time' => $current_team->check_out_time ?? StayPolicy::DEFAULT_CHECK_OUT_TIME,
+                'early_check_in_from' => $current_team->early_check_in_from ?? StayPolicy::DEFAULT_EARLY_CHECK_IN_FROM,
+            ],
+            'canReviewStayAdjustments' => $request->user()?->hasAbility(Ability::ReviewStayAdjustments, $current_team) ?? false,
         ]);
     }
 
-    public function store(SaveBookingRequest $request, Team $current_team, BookingDiscountService $discounts): RedirectResponse
+    public function store(SaveBookingRequest $request, Team $current_team, BookingDiscountService $discounts, BookingStayService $stays): RedirectResponse
     {
         Gate::authorize('create', [Booking::class, $current_team]);
 
-        $booking = DB::transaction(function () use ($request, $current_team, $discounts): Booking {
+        $booking = DB::transaction(function () use ($request, $current_team, $discounts, $stays): Booking {
             $data = $request->validated();
             $processPayment = (bool) ($data['process_payment'] ?? false);
             $actorId = $request->user()?->id;
 
             $room = Room::query()->findOrFail($data['room_id']);
             $pricePerNight = (float) $room->price_per_night;
-            $nights = max(1, Carbon::parse($data['check_in_date'])->diffInDays($data['check_out_date']));
-            $totalAmount = round($pricePerNight * $nights, 2);
 
             $bookingPayload = Arr::only($data, [
                 'room_id',
@@ -277,16 +289,22 @@ class BookingController extends Controller
                 'number_of_guests',
                 'check_in_date',
                 'check_out_date',
+                'check_in_at',
+                'check_out_at',
                 'status',
                 'notes',
             ]);
 
             $bookingPayload['price_per_night'] = $pricePerNight;
-            $bookingPayload['total_amount'] = $totalAmount;
+            $bookingPayload['total_amount'] = 0;
             $bookingPayload['created_by_user_id'] = $actorId;
             $bookingPayload['updated_by_user_id'] = $actorId;
 
             $booking = $current_team->bookings()->create($bookingPayload);
+
+            // Nights and the money that follows from them are worked out in one
+            // place, so an 08:00 arrival is priced the same however it got here.
+            $stays->apply($current_team, $booking);
 
             if ($booking->status === 'checked_in') {
                 $this->markRoomAsOccupied($room);
@@ -420,13 +438,13 @@ class BookingController extends Controller
             ->with('message', "{$booking->guest_name} has been checked out.");
     }
 
-    public function extendStay(ExtendBookingStayRequest $request, Team $current_team, Booking $booking): RedirectResponse
+    public function extendStay(ExtendBookingStayRequest $request, Team $current_team, Booking $booking, BookingStayService $stays): RedirectResponse
     {
         $this->bookingForTeam($current_team, $booking);
 
         Gate::authorize('update', [$booking, $current_team]);
 
-        DB::transaction(function () use ($booking, $current_team, $request): void {
+        DB::transaction(function () use ($booking, $current_team, $request, $stays): void {
             $actorId = $request->user()?->id;
             $newCheckOutDate = (string) $request->validated('check_out_date');
             $updatedNotes = $booking->notes;
@@ -438,15 +456,18 @@ class BookingController extends Controller
                     : "Extension: {$note}";
             }
 
-            $nights = max(1, Carbon::parse($booking->check_in_date)->diffInDays($newCheckOutDate));
-            $totalAmount = round((float) $booking->price_per_night * $nights, 2);
+            $policy = StayPolicy::forTeam($current_team);
 
             $booking->update([
                 'check_out_date' => $newCheckOutDate,
-                'total_amount' => $totalAmount,
+                'check_out_at' => $policy->checkOutBoundaryOn(Carbon::parse($newCheckOutDate)),
                 'notes' => $updatedNotes,
                 'updated_by_user_id' => $actorId,
             ]);
+
+            // An extension re-prices the stay under the same rules, including
+            // any night a manager already approved.
+            $stays->apply($current_team, $booking);
 
             $invoice = $this->syncBookingInvoice($current_team, $booking->fresh());
             $this->refreshInvoicePaidAmount($invoice->fresh());
@@ -469,11 +490,12 @@ class BookingController extends Controller
             'booking' => $booking->load(['room', 'createdBy:id,name', 'updatedBy:id,name']),
             'rooms' => $rooms,
             'statuses' => $statuses,
+            'statusLabels' => BookingStatus::labels(),
             'team' => $current_team->only('id', 'slug', 'name'),
         ]);
     }
 
-    public function update(SaveBookingRequest $request, Team $current_team, Booking $booking): RedirectResponse
+    public function update(SaveBookingRequest $request, Team $current_team, Booking $booking, BookingStayService $stays): RedirectResponse
     {
         $this->bookingForTeam($current_team, $booking);
 
@@ -482,9 +504,7 @@ class BookingController extends Controller
         $data = $request->validated();
         $actorId = $request->user()?->id;
         $room = Room::query()->findOrFail($data['room_id']);
-        $nights = max(1, Carbon::parse($data['check_in_date'])->diffInDays($data['check_out_date']));
         $data['price_per_night'] = $room->price_per_night;
-        $data['total_amount'] = $data['price_per_night'] * $nights;
         $data['updated_by_user_id'] = $actorId;
 
         $oldStatus = $booking->status;
@@ -492,6 +512,9 @@ class BookingController extends Controller
         $newStatus = $data['status'];
 
         $booking->update($data);
+
+        // Re-price through the one calculator rather than multiplying inline.
+        $stays->apply($current_team, $booking);
 
         if ($oldRoomId !== (int) $data['room_id']) {
             $oldRoom = Room::query()->find($oldRoomId);
@@ -537,39 +560,7 @@ class BookingController extends Controller
 
     private function syncBookingInvoice(Team $team, Booking $booking): Invoice
     {
-        $subtotal = round((float) $booking->total_amount, 2);
-        $discountAmount = $this->approvedDiscountAmount($booking, $subtotal);
-        $totalAmount = round(max($subtotal - $discountAmount, 0), 2);
-
-        /** @var Invoice $invoice */
-        $invoice = $team->invoices()->firstOrCreate(
-            ['booking_id' => $booking->id],
-            [
-                'invoice_number' => $this->generateInvoiceNumber($team),
-                'guest_name' => $booking->guest_name,
-                'guest_email' => $booking->guest_email,
-                'issue_date' => Carbon::today()->toDateString(),
-                'due_date' => Carbon::parse($booking->check_in_date)->toDateString(),
-                'subtotal' => $subtotal,
-                'tax_amount' => 0,
-                'discount_amount' => $discountAmount,
-                'total_amount' => $totalAmount,
-                'paid_amount' => 0,
-                'status' => 'issued',
-                'notes' => 'Auto-generated from booking.',
-            ],
-        );
-
-        $invoice->update([
-            'guest_name' => $booking->guest_name,
-            'guest_email' => $booking->guest_email,
-            'due_date' => Carbon::parse($booking->check_out_date)->toDateString(),
-            'subtotal' => $subtotal,
-            'discount_amount' => $discountAmount,
-            'total_amount' => $totalAmount,
-        ]);
-
-        return $invoice;
+        return app(BookingInvoiceService::class)->sync($team, $booking);
     }
 
     /**
@@ -578,9 +569,7 @@ class BookingController extends Controller
      */
     private function approvedDiscountAmount(Booking $booking, float $subtotal): float
     {
-        $discount = $booking->approvedDiscount()->first();
-
-        return $discount ? $discount->computeAmount($subtotal) : 0.0;
+        return app(BookingInvoiceService::class)->approvedDiscountAmount($booking, $subtotal);
     }
 
     /**
@@ -608,14 +597,7 @@ class BookingController extends Controller
 
     private function refreshInvoicePaidAmount(Invoice $invoice): void
     {
-        $paidAmount = (float) $invoice->payments()
-            ->where('status', 'completed')
-            ->sum('amount');
-
-        $invoice->update([
-            'paid_amount' => round($paidAmount, 2),
-            'status' => $invoice->statusFor($paidAmount),
-        ]);
+        app(BookingInvoiceService::class)->refreshPaidAmount($invoice);
     }
 
     private function markRoomAsOccupied(?Room $room): void
@@ -663,19 +645,7 @@ class BookingController extends Controller
 
     private function generateInvoiceNumber(Team $team): string
     {
-        $teamCode = strtoupper(substr(preg_replace('/[^a-z0-9]/i', '', $team->slug), 0, 4));
-        $teamCode = $teamCode !== '' ? $teamCode : 'TEAM';
-
-        do {
-            $candidate = sprintf(
-                '%s-INV-%s-%04d',
-                $teamCode,
-                Carbon::now()->format('ymd'),
-                random_int(1, 9999),
-            );
-        } while ($team->invoices()->where('invoice_number', $candidate)->exists());
-
-        return $candidate;
+        return app(BookingInvoiceService::class)->generateInvoiceNumber($team);
     }
 
     private function generatePaymentNumber(Team $team): string

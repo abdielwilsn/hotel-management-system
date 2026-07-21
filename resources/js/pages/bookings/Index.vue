@@ -2,15 +2,16 @@
 import { useForm, Link, usePage, router } from '@inertiajs/vue3';
 import {
     BadgePercent,
+    Calendar,
+    CalendarClock,
     CalendarDays,
     Check,
-    Wallet,
+    Edit,
     FileText,
+    LayoutList,
     Plus,
     Trash2,
-    Edit,
-    LayoutList,
-    Calendar,
+    Wallet,
     X,
 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
@@ -28,6 +29,7 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
+    DialogFooter,
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
@@ -54,6 +56,11 @@ import {
     reject as rejectDiscount,
     store as storeDiscount,
 } from '@/routes/bookings/discounts';
+import {
+    approve as approveStayAdjustment,
+    reject as rejectStayAdjustment,
+    store as storeStayAdjustment,
+} from '@/routes/bookings/stay-adjustments';
 import type { Team } from '@/types';
 
 type RoomOption = {
@@ -111,6 +118,16 @@ type Booking = {
         status: string;
         requested_by?: { id: number; name: string } | null;
     } | null;
+    chargeable_nights?: number | null;
+    nights_basis?: string | null;
+    active_stay_adjustment?: {
+        id: number;
+        computed_nights: number;
+        requested_nights: number;
+        reason: string | null;
+        status: string;
+        requested_by?: { id: number; name: string } | null;
+    } | null;
 };
 
 type Pagination = {
@@ -127,6 +144,18 @@ type Pagination = {
 type Props = {
     bookings: Booking[];
     pagination: Pagination;
+    stayPolicy: {
+        check_in_time: string;
+        check_out_time: string;
+        early_check_in_from: string;
+    };
+    canReviewStayAdjustments: boolean;
+    statusLabels: Record<string, string>;
+    creatableStatuses: Array<{
+        value: string;
+        label: string;
+        hint: string | null;
+    }>;
     rooms: RoomOption[];
     statuses: string[];
     paymentStatuses: string[];
@@ -327,6 +356,7 @@ const statusColor = (status: string) => {
 };
 
 const statusLabel = (status: string) =>
+    props.statusLabels?.[status] ??
     status.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
 const { formatCurrency } = useFormatters();
@@ -338,8 +368,7 @@ const userLabel = (user?: { name: string } | null) => user?.name ?? 'System';
 const isReservation = (booking: Booking) =>
     booking.status === 'pending' && bookingBalance(booking) > 0;
 
-const bookingStatusLabel = (booking: Booking) =>
-    isReservation(booking) ? 'Reservation' : statusLabel(booking.status);
+const bookingStatusLabel = (booking: Booking) => statusLabel(booking.status);
 
 const bookingStatusColor = (booking: Booking) =>
     isReservation(booking)
@@ -380,8 +409,7 @@ const discountLabel = (discount: NonNullable<Booking['active_discount']>) =>
         ? `${Number(discount.value)}%`
         : formatCurrency(discount.amount);
 
-const optionStatusLabel = (status: string) =>
-    status === 'pending' ? 'Reservation' : statusLabel(status);
+const optionStatusLabel = (status: string) => statusLabel(status);
 
 const formatDate = (d: string) =>
     new Date(d).toLocaleDateString('en-US', {
@@ -522,6 +550,72 @@ const submitDiscount = () => {
                 bookingToDiscount.value = null;
             },
         },
+    );
+};
+
+/* ------------------------------------------------------------------ *
+ * Night count — the desk asks for a different number of nights, a
+ * manager decides. Mirrors the discount flow above deliberately.
+ * ------------------------------------------------------------------ */
+const showStayDialog = ref(false);
+const bookingToAdjust = ref<Booking | null>(null);
+const stayForm = useForm({ requested_nights: 1, reason: '' });
+const stayReviewForm = useForm({ review_notes: '' });
+
+const openStayDialog = (booking: Booking) => {
+    bookingToAdjust.value = booking;
+    stayForm.reset();
+    stayForm.requested_nights = Math.max(
+        1,
+        (booking.chargeable_nights ?? 2) - 1,
+    );
+    showStayDialog.value = true;
+};
+
+const submitStayAdjustment = () => {
+    if (!bookingToAdjust.value) {
+        return;
+    }
+
+    stayForm.post(
+        storeStayAdjustment([props.team.slug, bookingToAdjust.value.id]).url,
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                showStayDialog.value = false;
+                bookingToAdjust.value = null;
+            },
+        },
+    );
+};
+
+const approveBookingStay = (booking: Booking) => {
+    if (!booking.active_stay_adjustment) {
+        return;
+    }
+
+    stayReviewForm.post(
+        approveStayAdjustment([
+            props.team.slug,
+            booking.id,
+            booking.active_stay_adjustment.id,
+        ]).url,
+        { preserveScroll: true },
+    );
+};
+
+const rejectBookingStay = (booking: Booking) => {
+    if (!booking.active_stay_adjustment) {
+        return;
+    }
+
+    stayReviewForm.post(
+        rejectStayAdjustment([
+            props.team.slug,
+            booking.id,
+            booking.active_stay_adjustment.id,
+        ]).url,
+        { preserveScroll: true },
     );
 };
 
@@ -668,6 +762,8 @@ const deleteBooking = () => {
         <BookingWizard
             :open="showBookingWizard"
             :team-slug="props.team.slug"
+            :policy="props.stayPolicy"
+            :creatable-statuses="props.creatableStatuses"
             @close="showBookingWizard = false"
             @submit="
                 () => {
@@ -931,6 +1027,40 @@ const deleteBooking = () => {
                                             'Auto on save'
                                         }}
                                     </p>
+
+                                    <!--
+                                        Why the guest is being charged this many
+                                        nights, in the words the calculator used.
+                                    -->
+                                    <p
+                                        v-if="booking.chargeable_nights"
+                                        class="mt-2 text-xs text-slate-600"
+                                        :title="booking.nights_basis ?? ''"
+                                    >
+                                        {{ booking.chargeable_nights }} night{{
+                                            booking.chargeable_nights > 1
+                                                ? 's'
+                                                : ''
+                                        }}
+                                        billed
+                                    </p>
+
+                                    <Badge
+                                        v-if="booking.active_stay_adjustment"
+                                        class="mt-2 rounded-full bg-amber-100 text-amber-800"
+                                    >
+                                        Nights pending:
+                                        {{
+                                            booking.active_stay_adjustment
+                                                .computed_nights
+                                        }}
+                                        →
+                                        {{
+                                            booking.active_stay_adjustment
+                                                .requested_nights
+                                        }}
+                                    </Badge>
+
                                     <Badge
                                         v-if="
                                             booking.active_discount?.status ===
@@ -1074,6 +1204,46 @@ const deleteBooking = () => {
                                             : 'Request Discount'
                                     }}
                                 </Button>
+                                <Button
+                                    v-if="!booking.active_stay_adjustment"
+                                    variant="outline"
+                                    size="sm"
+                                    class="h-10 w-full justify-start gap-2 rounded-xl"
+                                    @click="openStayDialog(booking)"
+                                >
+                                    <CalendarClock class="h-4 w-4" />
+                                    Request Different Nights
+                                </Button>
+                                <template
+                                    v-if="
+                                        canReviewStayAdjustments &&
+                                        booking.active_stay_adjustment
+                                    "
+                                >
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        class="h-10 w-full justify-start gap-2 rounded-xl border-green-200 text-green-700 hover:bg-green-50"
+                                        @click="approveBookingStay(booking)"
+                                    >
+                                        <Check class="h-4 w-4" />
+                                        Approve
+                                        {{
+                                            booking.active_stay_adjustment
+                                                .requested_nights
+                                        }}
+                                        Night(s)
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        class="h-10 w-full justify-start gap-2 rounded-xl border-red-200 text-red-600 hover:bg-red-50"
+                                        @click="rejectBookingStay(booking)"
+                                    >
+                                        <X class="h-4 w-4" />
+                                        Reject Nights
+                                    </Button>
+                                </template>
                                 <template
                                     v-if="
                                         isAdmin &&
@@ -2003,4 +2173,64 @@ const deleteBooking = () => {
             </DialogContent>
         </Dialog>
     </div>
+
+    <!-- Ask for a different number of nights -->
+    <Dialog v-model:open="showStayDialog">
+        <DialogContent class="max-w-md">
+            <DialogHeader>
+                <DialogTitle>Request a different night count</DialogTitle>
+                <DialogDescription>
+                    {{
+                        bookingToAdjust?.nights_basis ??
+                        'The policy worked this stay out from the arrival and departure times.'
+                    }}
+                </DialogDescription>
+            </DialogHeader>
+
+            <div class="space-y-4">
+                <div class="grid gap-2">
+                    <Label for="requested_nights">Nights to charge</Label>
+                    <Input
+                        id="requested_nights"
+                        v-model="stayForm.requested_nights"
+                        type="number"
+                        min="1"
+                    />
+                    <InputError :message="stayForm.errors.requested_nights" />
+                </div>
+
+                <div class="grid gap-2">
+                    <Label for="stay_reason">Reason</Label>
+                    <Input
+                        id="stay_reason"
+                        v-model="stayForm.reason"
+                        placeholder="Guest arrived early, agreed one night"
+                    />
+                    <InputError :message="stayForm.errors.reason" />
+                </div>
+
+                <p
+                    v-if="!canReviewStayAdjustments"
+                    class="text-xs text-muted-foreground"
+                >
+                    This goes to a manager for approval. The bill does not
+                    change until they agree.
+                </p>
+            </div>
+
+            <DialogFooter>
+                <Button variant="ghost" @click="showStayDialog = false">
+                    Cancel
+                </Button>
+                <Button
+                    :disabled="stayForm.processing"
+                    @click="submitStayAdjustment"
+                >
+                    {{
+                        canReviewStayAdjustments ? 'Apply' : 'Send for approval'
+                    }}
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
 </template>

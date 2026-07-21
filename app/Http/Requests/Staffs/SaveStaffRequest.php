@@ -5,6 +5,7 @@ namespace App\Http\Requests\Staffs;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 
 class SaveStaffRequest extends FormRequest
 {
@@ -47,6 +48,12 @@ class SaveStaffRequest extends FormRequest
             'emergency_contact_name' => ['nullable', 'string', 'max:255'],
             'emergency_contact_phone' => ['nullable', 'string', 'max:20'],
             'status' => ['required', 'in:active,inactive,on_leave'],
+            // Optional: a manager can set the login password directly (useful
+            // when no mailer is configured). Left blank, the staff member is
+            // emailed a reset link instead. Only applies when creating staff.
+            'password' => $this->isMethod('POST')
+                ? ['nullable', 'string', 'confirmed', Password::default()]
+                : ['nullable'],
         ];
     }
 }

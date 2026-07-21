@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Pos;
 
-use App\Enums\TeamRole;
+use App\Enums\Ability;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Pos\ReceivePosStockRequest;
 use App\Http\Requests\Pos\SavePosStockRequest;
@@ -224,12 +224,20 @@ class PosController extends Controller
      */
     private function accessibleOutlets(Request $request, Team $team): Collection
     {
-        $query = PosOutlet::query()->forTeam($team)->active()->orderBy('name');
+        $user = $request->user();
 
-        $role = $request->user()->teamRole($team);
+        $query = PosOutlet::query()
+            ->forTeam($team)
+            ->active()
+            ->visibleTo($user, $team)
+            ->orderBy('name');
 
-        if ($role === null || ! $role->isAtLeast(TeamRole::Member)) {
-            $query->whereIn('id', $request->user()->posOutlets()->select('pos_outlets.id'));
+        // Department-scoped staff are already limited to their own outlets by
+        // visibleTo above. The explicit roster only narrows unscoped POS staff,
+        // who would otherwise see every till in the hotel.
+        if ($user->visibleDepartmentIds($team) === null
+            && ! $user->hasAbility(Ability::AccessHotel, $team)) {
+            $query->whereIn('id', $user->posOutlets()->select('pos_outlets.id'));
         }
 
         return $query->get();

@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Enums\DataScope;
 use App\Models\Booking;
 use App\Models\Department;
 use App\Models\Expense;
@@ -162,7 +163,32 @@ class ImportedAppDataSeeder extends Seeder
             if (! $user->teams()->where('team_id', $team->id)->exists()) {
                 $user->teams()->attach($team, ['role' => $teamRole]);
             }
+
+            $this->scopeToOwnDepartment($team, $user, $staff, $row['department']);
         }
+    }
+
+    /**
+     * Tie a rank-and-file member's visibility to the department they work in.
+     *
+     * Front desk staff hold the point-of-sale ability like any member, but the
+     * bar and restaurant outlets belong to their own departments, so scoping
+     * reception to Front Desk is what keeps them off the tills.
+     */
+    private function scopeToOwnDepartment(Team $team, User $user, Staff $staff, string $department): void
+    {
+        // Managers and admins run the whole hotel; only scope general staff.
+        if ($staff->role === 'manager' || $staff->role === 'admin') {
+            return;
+        }
+
+        $team->memberships()
+            ->where('user_id', $user->id)
+            ->update(['data_scope' => DataScope::Departments->value]);
+
+        $user->departments()->wherePivot('team_id', $team->id)->detach();
+
+        $user->departments()->attach($staff->department_id, ['team_id' => $team->id]);
     }
 
     /**

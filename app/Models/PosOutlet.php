@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Concerns\BelongsToDepartment;
 use Database\Factories\PosOutletFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -13,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class PosOutlet extends Model
 {
     /** @use HasFactory<PosOutletFactory> */
-    use HasFactory;
+    use BelongsToDepartment, HasFactory;
 
     protected $fillable = [
         'team_id',

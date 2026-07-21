@@ -12,6 +12,8 @@ export type Team = {
     locale?: string;
 };
 
+export type DataScope = 'all' | 'departments';
+
 export type TeamMember = {
     id: number;
     name: string;
@@ -19,6 +21,23 @@ export type TeamMember = {
     avatar?: string | null;
     role: TeamRole;
     role_label: string;
+    data_scope: DataScope;
+    department_ids: number[];
+};
+
+export type AbilityOption = {
+    value: string;
+    label: string;
+};
+
+export type AbilityGroup = {
+    group: string;
+    abilities: AbilityOption[];
+};
+
+export type DataScopeOption = {
+    value: DataScope;
+    label: string;
 };
 
 export type TeamInvitation = {

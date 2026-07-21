@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/select';
 import { useFormatters } from '@/lib/format';
 import { store } from '@/routes/bookings';
+import { quote } from '@/routes/bookings';
 import { availability } from '@/routes/rooms';
 
 type Room = {
@@ -40,15 +41,50 @@ type Room = {
     price_per_night: number;
 };
 
+/** What the server says a stay costs, and why. */
+type StayQuote = {
+    nights: number;
+    hotel_days: number;
+    consumed_previous_night: boolean;
+    basis: string;
+    nightly_rate: number | null;
+    total: number | null;
+};
+
+/** A thing a clerk can be doing when they take a booking. */
+type CreatableStatus = {
+    value: string;
+    label: string;
+    hint: string | null;
+};
+
+/** The house clock this hotel runs on. */
+type StayPolicyProps = {
+    check_in_time: string;
+    check_out_time: string;
+    early_check_in_from: string;
+};
+
 type Props = {
     open: boolean;
     teamSlug: string;
     /** Preselect this room once availability confirms it is free. */
     preselectRoomId?: number | null;
+    policy?: StayPolicyProps;
+    creatableStatuses?: CreatableStatus[];
 };
 
 const props = withDefaults(defineProps<Props>(), {
     preselectRoomId: null,
+    policy: () => ({
+        check_in_time: '14:00',
+        check_out_time: '12:00',
+        early_check_in_from: '08:00',
+    }),
+    creatableStatuses: () => [
+        { value: 'pending', label: 'Reservation', hint: null },
+        { value: 'checked_in', label: 'Checked In', hint: null },
+    ],
 });
 
 const emit = defineEmits<{
@@ -79,6 +115,12 @@ const form = useForm({
     number_of_guests: '1',
     check_in_date: today(),
     check_out_date: tomorrow(),
+    check_in_time: props.policy.check_in_time,
+    check_out_time: props.policy.check_out_time,
+    // Filled in on submit from the date + time pair above; declared here so
+    // validation errors coming back from the server have somewhere to land.
+    check_in_at: '',
+    check_out_at: '',
     status: 'pending',
     notes: '',
     discount_type: '',
@@ -100,23 +142,89 @@ const loadingRooms = ref(false);
 const availabilityError = ref<string | null>(null);
 const roomSearch = ref('');
 
-const nightsCount = computed(() => {
-    if (!form.check_in_date || !form.check_out_date) {
-        return 0;
-    }
+/* ------------------------------------------------------------------ *
+ * Nights — quoted by the server so the desk and the bill can never
+ * disagree. A hotel night runs checkout-to-checkout, and an arrival
+ * before the early check-in time takes the night before with it, so
+ * this is not a date subtraction.
+ * ------------------------------------------------------------------ */
+const quoteResult = ref<StayQuote | null>(null);
+const quoting = ref(false);
 
-    const ms =
-        new Date(form.check_out_date).getTime() -
-        new Date(form.check_in_date).getTime();
+const checkInAt = computed(() =>
+    form.check_in_date ? `${form.check_in_date} ${form.check_in_time}` : '',
+);
+const checkOutAt = computed(() =>
+    form.check_out_date ? `${form.check_out_date} ${form.check_out_time}` : '',
+);
 
-    return Math.ceil(ms / 86400000);
-});
+const selectedStatusHint = computed(
+    () =>
+        props.creatableStatuses.find((o) => o.value === form.status)?.hint ??
+        null,
+);
+
+/**
+ * Checking somebody in means they are at the desk now, so the arrival is now —
+ * which is exactly how a 05:00 walk-in ends up correctly priced as two nights
+ * rather than being quietly recorded as a 14:00 arrival.
+ */
+watch(
+    () => form.status,
+    (status) => {
+        if (status !== 'checked_in') {
+            return;
+        }
+
+        const now = new Date();
+
+        form.check_in_date = now.toISOString().split('T')[0];
+        form.check_in_time = now.toTimeString().slice(0, 5);
+    },
+);
+
+const nightsCount = computed(() => quoteResult.value?.nights ?? 0);
 
 const hasValidRange = computed(
     () =>
-        Boolean(form.check_in_date && form.check_out_date) &&
-        nightsCount.value > 0,
+        Boolean(checkInAt.value && checkOutAt.value) &&
+        new Date(checkOutAt.value.replace(' ', 'T')) >
+            new Date(checkInAt.value.replace(' ', 'T')),
 );
+
+const fetchQuote = async () => {
+    if (!hasValidRange.value) {
+        quoteResult.value = null;
+
+        return;
+    }
+
+    quoting.value = true;
+
+    try {
+        const url = quote.url(props.teamSlug, {
+            query: {
+                check_in_at: checkInAt.value,
+                check_out_at: checkOutAt.value,
+                ...(form.room_id ? { room_id: form.room_id } : {}),
+            },
+        });
+
+        const response = await fetch(url, {
+            headers: { Accept: 'application/json' },
+        });
+
+        quoteResult.value = response.ok ? await response.json() : null;
+    } catch {
+        quoteResult.value = null;
+    } finally {
+        quoting.value = false;
+    }
+};
+
+watch(() => [checkInAt.value, checkOutAt.value, form.room_id], fetchQuote, {
+    immediate: true,
+});
 
 const fetchAvailability = async () => {
     if (!hasValidRange.value) {
@@ -279,6 +387,8 @@ const resetWizard = () => {
     form.reset();
     form.check_in_date = today();
     form.check_out_date = tomorrow();
+    form.check_in_time = props.policy.check_in_time;
+    form.check_out_time = props.policy.check_out_time;
     form.payment_date = today();
     step.value = 1;
     roomSearch.value = '';
@@ -291,6 +401,10 @@ const submitForm = () => {
     form.transform((data) => ({
         ...data,
         discount_type: hasDiscount.value ? data.discount_type : '',
+        // The times are what decide the night count; the dates stay for
+        // availability and the calendar.
+        check_in_at: checkInAt.value,
+        check_out_at: checkOutAt.value,
     })).post(store(props.teamSlug).url, {
         preserveScroll: true,
         preserveState: true,
@@ -387,6 +501,36 @@ watch(
                             />
                             <InputError :message="form.errors.check_out_date" />
                         </div>
+
+                        <div>
+                            <Label for="check_in_time">Arrival Time *</Label>
+                            <Input
+                                id="check_in_time"
+                                v-model="form.check_in_time"
+                                type="time"
+                                class="mt-1"
+                            />
+                            <p class="mt-1 text-xs text-muted-foreground">
+                                Standard {{ policy.check_in_time }}. Before
+                                {{ policy.early_check_in_from }} counts the
+                                night before.
+                            </p>
+                            <InputError :message="form.errors.check_in_at" />
+                        </div>
+
+                        <div>
+                            <Label for="check_out_time">Departure Time *</Label>
+                            <Input
+                                id="check_out_time"
+                                v-model="form.check_out_time"
+                                type="time"
+                                class="mt-1"
+                            />
+                            <p class="mt-1 text-xs text-muted-foreground">
+                                Standard {{ policy.check_out_time }}.
+                            </p>
+                            <InputError :message="form.errors.check_out_at" />
+                        </div>
                     </div>
 
                     <div>
@@ -408,15 +552,44 @@ watch(
                         <InputError :message="form.errors.number_of_guests" />
                     </div>
 
+                    <!--
+                        The night count comes from the server, along with the
+                        sentence explaining it, so the desk can tell the guest
+                        why before taking the money.
+                    -->
                     <div
-                        v-if="hasValidRange"
-                        class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+                        v-if="quoting"
+                        class="flex items-center gap-2 rounded-lg border p-3 text-sm text-muted-foreground"
                     >
-                        {{ nightsCount }} night{{
-                            nightsCount > 1 ? 's' : ''
-                        }}
-                        · {{ formatDate(form.check_in_date) }} →
-                        {{ formatDate(form.check_out_date) }}
+                        <Loader2 class="h-4 w-4 animate-spin" />
+                        Working out the nights…
+                    </div>
+
+                    <div
+                        v-else-if="quoteResult"
+                        class="rounded-lg border p-3 text-sm"
+                        :class="
+                            quoteResult.consumed_previous_night
+                                ? 'border-amber-300 bg-amber-50 text-amber-900'
+                                : 'border-gray-200 bg-gray-50 text-gray-700'
+                        "
+                    >
+                        <p class="font-medium">
+                            {{ quoteResult.nights }} night{{
+                                quoteResult.nights > 1 ? 's' : ''
+                            }}
+                            <span v-if="quoteResult.total !== null">
+                                · {{ formatCurrency(quoteResult.total) }}
+                            </span>
+                        </p>
+                        <p class="mt-1">{{ quoteResult.basis }}</p>
+                        <p
+                            v-if="quoteResult.consumed_previous_night"
+                            class="mt-1 text-xs"
+                        >
+                            A manager can approve charging fewer nights after
+                            the booking is made.
+                        </p>
                     </div>
                 </div>
 
@@ -588,18 +761,27 @@ watch(
                     </div>
 
                     <div>
-                        <Label for="status">Booking Status *</Label>
+                        <Label for="status">What are you doing? *</Label>
                         <Select v-model="form.status">
                             <SelectTrigger id="status" class="mt-1">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="pending">Pending</SelectItem>
-                                <SelectItem value="confirmed">
-                                    Confirmed
+                                <SelectItem
+                                    v-for="option in creatableStatuses"
+                                    :key="option.value"
+                                    :value="option.value"
+                                >
+                                    {{ option.label }}
                                 </SelectItem>
                             </SelectContent>
                         </Select>
+                        <p
+                            v-if="selectedStatusHint"
+                            class="mt-1 text-xs text-muted-foreground"
+                        >
+                            {{ selectedStatusHint }}
+                        </p>
                         <InputError :message="form.errors.status" />
                     </div>
 

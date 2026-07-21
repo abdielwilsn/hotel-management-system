@@ -2,7 +2,7 @@
 
 namespace App\Policies;
 
-use App\Enums\TeamRole;
+use App\Enums\Ability;
 use App\Models\InventoryCategory;
 use App\Models\Team;
 use App\Models\User;
@@ -11,31 +11,26 @@ class InventoryCategoryPolicy
 {
     public function viewAny(User $user, Team $team): bool
     {
-        return $user->belongsToTeam($team);
+        return $user->hasAbility(Ability::ViewInventory, $team);
     }
 
     public function view(User $user, InventoryCategory $inventoryCategory, Team $team): bool
     {
-        return $inventoryCategory->team_id === $team->id && $user->belongsToTeam($team);
+        return $inventoryCategory->team_id === $team->id && $user->hasAbility(Ability::ViewInventory, $team);
     }
 
     public function create(User $user, Team $team): bool
     {
-        return $this->hasAdminPrivileges($user, $team);
+        return $user->hasAbility(Ability::ManageInventory, $team);
     }
 
     public function update(User $user, InventoryCategory $inventoryCategory, Team $team): bool
     {
-        return $inventoryCategory->team_id === $team->id && $this->hasAdminPrivileges($user, $team);
+        return $inventoryCategory->team_id === $team->id && $user->hasAbility(Ability::ManageInventory, $team);
     }
 
     public function delete(User $user, InventoryCategory $inventoryCategory, Team $team): bool
     {
-        return $inventoryCategory->team_id === $team->id && $this->hasAdminPrivileges($user, $team);
-    }
-
-    private function hasAdminPrivileges(User $user, Team $team): bool
-    {
-        return $user->teamRole($team)->isAtLeast(TeamRole::Admin);
+        return $inventoryCategory->team_id === $team->id && $user->hasAbility(Ability::ManageInventory, $team);
     }
 }

@@ -2,7 +2,7 @@
 
 namespace App\Policies;
 
-use App\Enums\TeamRole;
+use App\Enums\Ability;
 use App\Models\Guest;
 use App\Models\Team;
 use App\Models\User;
@@ -14,7 +14,7 @@ class GuestPolicy
      */
     public function viewAny(User $user, Team $team): bool
     {
-        return $user->belongsToTeam($team);
+        return $user->hasAbility(Ability::ViewGuests, $team);
     }
 
     /**
@@ -22,7 +22,7 @@ class GuestPolicy
      */
     public function view(User $user, Guest $guest, Team $team): bool
     {
-        return $guest->team_id === $team->id && $user->belongsToTeam($team);
+        return $guest->team_id === $team->id && $user->hasAbility(Ability::ViewGuests, $team);
     }
 
     /**
@@ -30,7 +30,7 @@ class GuestPolicy
      */
     public function create(User $user, Team $team): bool
     {
-        return $user->belongsToTeam($team);
+        return $user->hasAbility(Ability::ManageGuests, $team);
     }
 
     /**
@@ -38,7 +38,7 @@ class GuestPolicy
      */
     public function update(User $user, Guest $guest, Team $team): bool
     {
-        return $guest->team_id === $team->id && $user->belongsToTeam($team);
+        return $guest->team_id === $team->id && $user->hasAbility(Ability::ManageGuests, $team);
     }
 
     /**
@@ -46,7 +46,7 @@ class GuestPolicy
      */
     public function delete(User $user, Guest $guest, Team $team): bool
     {
-        return $guest->team_id === $team->id && $this->hasAdminPrivileges($user, $team);
+        return $guest->team_id === $team->id && $user->hasAbility(Ability::DeleteGuests, $team);
     }
 
     /**
@@ -63,10 +63,5 @@ class GuestPolicy
     public function forceDelete(User $user, Guest $guest): bool
     {
         return false;
-    }
-
-    private function hasAdminPrivileges(User $user, Team $team): bool
-    {
-        return $user->teamRole($team)?->isAtLeast(TeamRole::Admin) ?? false;
     }
 }

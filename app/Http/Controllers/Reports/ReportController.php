@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Reports;
 
-use App\Enums\TeamRole;
+use App\Enums\Ability;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Illuminate\Http\Request;
@@ -14,7 +14,7 @@ class ReportController extends Controller
     public function index(Request $request, Team $current_team): Response
     {
         abort_unless(
-            $request->user()?->teamRole($current_team)?->isAtLeast(TeamRole::Admin),
+            $request->user()?->hasAbility(Ability::ViewReports, $current_team),
             403,
         );
 

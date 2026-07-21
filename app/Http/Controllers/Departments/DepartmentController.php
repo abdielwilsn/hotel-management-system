@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Departments;
 
+use App\Enums\Ability;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Departments\SaveDepartmentRequest;
 use App\Models\Department;
@@ -24,6 +25,7 @@ class DepartmentController extends Controller
         return Inertia::render('departments/Index', [
             'departments' => Department::query()
                 ->forTeam($current_team)
+                ->visibleTo($request->user(), $current_team)
                 ->with('manager:id,name,email')
                 ->orderBy('name')
                 ->get()
@@ -66,7 +68,7 @@ class DepartmentController extends Controller
         Gate::authorize('create', [Department::class, $current_team]);
 
         Department::create([
-            ...$request->validated(),
+            ...$this->permittedAttributes($request, $current_team),
             'team_id' => $current_team->id,
         ]);
 
@@ -91,7 +93,10 @@ class DepartmentController extends Controller
                 'description' => $department->description,
                 'status' => $department->status,
                 'manager_id' => $department->manager_id,
+                'abilities' => $department->abilities ?? [],
             ],
+            'abilityGroups' => Ability::grouped(),
+            'canManagePermissions' => $request->user()?->hasAbility(Ability::ManagePermissions, $current_team) ?? false,
             'members' => $current_team->members()
                 ->select('users.id', 'users.name', 'users.email')
                 ->orderBy('users.name')
@@ -119,7 +124,7 @@ class DepartmentController extends Controller
 
         Gate::authorize('update', [$department, $current_team]);
 
-        $department->update($request->validated());
+        $department->update($this->permittedAttributes($request, $current_team));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Department updated.')]);
 
@@ -143,6 +148,27 @@ class DepartmentController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Department deleted.')]);
 
         return to_route('departments.index', ['current_team' => $current_team->slug]);
+    }
+
+    /**
+     * The attributes this user is actually allowed to write.
+     *
+     * A department's abilities are what its members may do, so changing them is
+     * granting permission, not editing a record. Someone who may reorganise
+     * departments but not manage permissions must not be able to promote
+     * themselves by ticking boxes here.
+     *
+     * @return array<string, mixed>
+     */
+    private function permittedAttributes(SaveDepartmentRequest $request, Team $team): array
+    {
+        $attributes = $request->validated();
+
+        if (! $request->user()?->hasAbility(Ability::ManagePermissions, $team)) {
+            unset($attributes['abilities']);
+        }
+
+        return $attributes;
     }
 
     /**

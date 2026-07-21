@@ -2,8 +2,10 @@
 
 namespace App\Concerns;
 
+use App\Enums\Ability;
 use App\Enums\TeamPermission;
 use App\Enums\TeamRole;
+use App\Models\Department;
 use App\Models\Membership;
 use App\Models\Team;
 use App\Support\TeamPermissions;
@@ -18,6 +20,42 @@ use Illuminate\Support\Facades\URL;
 trait HasTeams
 {
     /**
+     * Bumped whenever a membership or role is written. Memoised entries carry
+     * the generation they were read at, so a write invalidates them without
+     * needing a handle on every User instance in play.
+     */
+    protected static int $teamMembershipGeneration = 0;
+
+    /**
+     * Memberships memoised on this instance, keyed by team id.
+     *
+     * Held per instance rather than statically so that nothing leaks between
+     * requests, or between tests that reuse the same primary keys.
+     *
+     * @var array<int, array{generation: int, membership: Membership|null}>
+     */
+    protected array $teamMembershipCache = [];
+
+    /**
+     * Department-derived abilities memoised on this instance, keyed by team id.
+     *
+     * @var array<int, array{generation: int, abilities: Collection<int, Ability>|null}>
+     */
+    protected array $departmentAbilityCache = [];
+
+    /**
+     * The departments this user is scoped to, when their data scope is limited.
+     *
+     * @return BelongsToMany<Department, $this>
+     */
+    public function departments(): BelongsToMany
+    {
+        return $this->belongsToMany(Department::class, 'department_user')
+            ->withPivot('team_id')
+            ->withTimestamps();
+    }
+
+    /**
      * Get all of the teams the user belongs to.
      *
      * @return BelongsToMany<Team, $this>
@@ -25,7 +63,7 @@ trait HasTeams
     public function teams(): BelongsToMany
     {
         return $this->belongsToMany(Team::class, 'team_members', 'user_id', 'team_id')
-            ->withPivot(['role'])
+            ->withPivot(['role', 'data_scope'])
             ->withTimestamps();
     }
 
@@ -118,14 +156,164 @@ trait HasTeams
     }
 
     /**
+     * Get the user's membership of the given team.
+     *
+     * Memoised for the lifetime of the request because policies ask for it many
+     * times per page. Membership writes flush the cache, see Membership::boot().
+     */
+    public function teamMembership(Team $team): ?Membership
+    {
+        $cached = $this->teamMembershipCache[$team->id] ?? null;
+
+        if ($cached !== null && $cached['generation'] === static::$teamMembershipGeneration) {
+            return $cached['membership'];
+        }
+
+        $membership = $this->teamMemberships()
+            ->where('team_id', $team->id)
+            ->first();
+
+        $this->teamMembershipCache[$team->id] = [
+            'generation' => static::$teamMembershipGeneration,
+            'membership' => $membership,
+        ];
+
+        return $membership;
+    }
+
+    /**
+     * Invalidate every memoised membership.
+     */
+    public static function flushTeamMembershipCache(): void
+    {
+        static::$teamMembershipGeneration++;
+    }
+
+    /**
      * Get the user's role on the given team.
      */
     public function teamRole(Team $team): ?TeamRole
     {
-        return $this->teamMemberships()
-            ->where('team_id', $team->id)
-            ->first()
-            ?->role;
+        return $this->teamMembership($team)?->role;
+    }
+
+    /**
+     * Get the abilities the user holds on the given team.
+     *
+     * Departments are the permission groups: what someone may do follows from
+     * the departments they work in. Owners and admins run the whole hotel, and
+     * anyone not yet assigned to a department falls back to their base role so
+     * that a half-configured team is never locked out.
+     *
+     * @return Collection<int, Ability>
+     */
+    public function teamAbilities(Team $team): Collection
+    {
+        $membership = $this->teamMembership($team);
+
+        if ($membership === null) {
+            return collect();
+        }
+
+        if ($membership->role?->isAtLeast(TeamRole::Admin)) {
+            return collect(Ability::cases());
+        }
+
+        $departmentAbilities = $this->departmentAbilities($team);
+
+        if ($departmentAbilities !== null) {
+            return $departmentAbilities;
+        }
+
+        return $membership->abilities();
+    }
+
+    /**
+     * The union of the abilities granted by the user's departments.
+     *
+     * Returns null when the user belongs to no department, which callers treat
+     * as "fall back" rather than "grants nothing".
+     *
+     * @return Collection<int, Ability>|null
+     */
+    protected function departmentAbilities(Team $team): ?Collection
+    {
+        $cached = $this->departmentAbilityCache[$team->id] ?? null;
+
+        if ($cached !== null && $cached['generation'] === static::$teamMembershipGeneration) {
+            return $cached['abilities'];
+        }
+
+        $departments = $this->departments()
+            ->where('department_user.team_id', $team->id)
+            ->get();
+
+        $abilities = $departments->isEmpty()
+            ? null
+            : $departments
+                ->flatMap(fn (Department $department) => $department->abilities ?? [])
+                ->unique()
+                ->map(fn (string $ability) => Ability::tryFrom($ability))
+                ->filter()
+                ->values();
+
+        $this->departmentAbilityCache[$team->id] = [
+            'generation' => static::$teamMembershipGeneration,
+            'abilities' => $abilities,
+        ];
+
+        return $abilities;
+    }
+
+    /**
+     * Determine if the user holds the given ability on the given team.
+     *
+     * This is the single question every policy asks. Non-members hold nothing.
+     */
+    public function hasAbility(Ability $ability, ?Team $team = null): bool
+    {
+        $team ??= $this->currentTeam;
+
+        if ($team === null) {
+            return false;
+        }
+
+        return $this->teamAbilities($team)->contains($ability);
+    }
+
+    /**
+     * The departments the user's records are limited to on the given team.
+     *
+     * Returns null when the user sees everything, which callers treat as "do not
+     * filter" rather than "filter to nothing".
+     *
+     * @return Collection<int, int>|null
+     */
+    public function visibleDepartmentIds(Team $team): ?Collection
+    {
+        $membership = $this->teamMembership($team);
+
+        if ($membership === null || $membership->seesAllDepartments()) {
+            return null;
+        }
+
+        return $this->departments()
+            ->where('department_user.team_id', $team->id)
+            ->pluck('departments.id');
+    }
+
+    /**
+     * Determine if the user may act on records in the given department.
+     */
+    public function canAccessDepartment(Team $team, ?int $departmentId): bool
+    {
+        $visible = $this->visibleDepartmentIds($team);
+
+        if ($visible === null) {
+            return true;
+        }
+
+        return $departmentId !== null && $visible->contains($departmentId);
     }
 
     /**

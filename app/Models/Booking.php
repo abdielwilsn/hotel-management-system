@@ -2,6 +2,10 @@
 
 namespace App\Models;
 
+use App\Support\StayCalculator;
+use App\Support\StayCharge;
+use App\Support\StayPolicy;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -24,6 +28,10 @@ class Booking extends Model
         'number_of_guests',
         'check_in_date',
         'check_out_date',
+        'check_in_at',
+        'check_out_at',
+        'chargeable_nights',
+        'nights_basis',
         'price_per_night',
         'total_amount',
         'status',
@@ -33,6 +41,9 @@ class Booking extends Model
     protected $casts = [
         'check_in_date' => 'date',
         'check_out_date' => 'date',
+        'check_in_at' => 'datetime',
+        'check_out_at' => 'datetime',
+        'chargeable_nights' => 'integer',
         'price_per_night' => 'decimal:2',
         'total_amount' => 'decimal:2',
     ];
@@ -117,8 +128,95 @@ class Booking extends Model
             ->whereDate('check_out_date', '>', $checkInDate);
     }
 
+    /**
+     * @return HasMany<BookingStayAdjustment, $this>
+     */
+    public function stayAdjustments(): HasMany
+    {
+        return $this->hasMany(BookingStayAdjustment::class);
+    }
+
+    /**
+     * The approved override of the computed nights, if a manager granted one.
+     */
+    public function approvedStayAdjustment(): ?BookingStayAdjustment
+    {
+        return $this->stayAdjustments()
+            ->approved()
+            ->latest('reviewed_at')
+            ->first();
+    }
+
+    /**
+     * The outstanding night-count request, eager-loadable for the bookings list.
+     */
+    public function activeStayAdjustment(): HasOne
+    {
+        return $this->hasOne(BookingStayAdjustment::class)
+            ->where('status', 'pending')
+            ->latestOfMany();
+    }
+
+    /**
+     * The pending request for a different night count, if the desk raised one.
+     */
+    public function pendingStayAdjustment(): ?BookingStayAdjustment
+    {
+        return $this->stayAdjustments()->pending()->latest()->first();
+    }
+
+    /**
+     * When the guest arrives, falling back to the house check-in time.
+     *
+     * Bookings taken before the clock mattered only have dates, so the standard
+     * arrival time stands in for them.
+     */
+    public function arrivesAt(StayPolicy $policy): CarbonImmutable
+    {
+        if ($this->check_in_at !== null) {
+            return CarbonImmutable::instance($this->check_in_at->toDateTime());
+        }
+
+        return $policy->checkInBoundaryOn($this->check_in_date);
+    }
+
+    /**
+     * When the guest leaves, falling back to the house checkout time.
+     */
+    public function departsAt(StayPolicy $policy): CarbonImmutable
+    {
+        if ($this->check_out_at !== null) {
+            return CarbonImmutable::instance($this->check_out_at->toDateTime());
+        }
+
+        return $policy->checkOutBoundaryOn($this->check_out_date);
+    }
+
+    /**
+     * What this stay works out to under the given policy, before any approved
+     * override is taken into account.
+     */
+    public function computedStayCharge(StayPolicy $policy): StayCharge
+    {
+        return (new StayCalculator($policy))->charge(
+            $this->arrivesAt($policy),
+            $this->departsAt($policy),
+        );
+    }
+
+    /**
+     * The nights this booking is billed for.
+     *
+     * Prefers what was worked out and stored when the booking was written, so a
+     * bill never silently changes underneath a guest because the house clock was
+     * edited afterwards.
+     */
     public function getNightsAttribute(): int
     {
-        return $this->check_in_date->diffInDays($this->check_out_date);
+        if ($this->chargeable_nights !== null) {
+            return $this->chargeable_nights;
+        }
+
+        return max(1, (int) $this->check_in_date->diffInDays($this->check_out_date));
     }
 }

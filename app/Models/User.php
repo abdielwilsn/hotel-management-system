@@ -4,7 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Concerns\HasTeams;
-use App\Enums\TeamRole;
+use App\Enums\Ability;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -50,18 +50,30 @@ class User extends Authenticatable
     /**
      * Determine whether the user may operate the given POS outlet.
      *
-     * General team staff (Member and above) can access every outlet on their team;
-     * POS-only staff are limited to the outlets they are assigned to.
+     * Access narrows in three steps: the user must be allowed to work a till at
+     * all, the outlet must fall inside their department scope, and POS-only
+     * staff are further limited to the outlets they are explicitly assigned to.
      */
     public function canAccessPosOutlet(PosOutlet $outlet): bool
     {
-        if (! $this->belongsToTeam($outlet->team)) {
+        $team = $outlet->team;
+
+        if (! $this->hasAbility(Ability::OperatePos, $team)) {
             return false;
         }
 
-        $role = $this->teamRole($outlet->team);
+        if (! $this->canAccessDepartment($team, $outlet->department_id)) {
+            return false;
+        }
 
-        if ($role !== null && $role->isAtLeast(TeamRole::Member)) {
+        // Department-scoped staff have already earned this outlet by working in
+        // the department that owns it; a second per-outlet roster would only be
+        // another thing to keep in step.
+        if ($this->visibleDepartmentIds($team) !== null) {
+            return true;
+        }
+
+        if ($this->hasAbility(Ability::AccessHotel, $team)) {
             return true;
         }
 

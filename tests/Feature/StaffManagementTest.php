@@ -5,6 +5,7 @@ use App\Models\Staff;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 
 uses(RefreshDatabase::class);
 
@@ -175,4 +176,94 @@ test('creating staff creates a user account and adds to team', function () {
 
     // Verify user was added to the team with member role
     $this->assertTrue($createdUser->teams()->where('team_id', $team->id)->exists());
+});
+
+test('a manager can set the staff login password directly', function () {
+    $team = Team::factory()->create();
+    $admin = User::factory()->create();
+    $admin->teams()->attach($team, ['role' => 'admin']);
+    $department = Department::factory()->create(['team_id' => $team->id]);
+
+    $this->actingAs($admin)->post("/{$team->slug}/staff", [
+        'full_name' => 'Grace Ade',
+        'email' => 'grace@example.com',
+        'role' => 'receptionist',
+        'department_id' => $department->id,
+        'employment_date' => now()->toDateString(),
+        'status' => 'active',
+        'password' => 'front-desk-2026!',
+        'password_confirmation' => 'front-desk-2026!',
+    ])->assertRedirect("/{$team->slug}/staff");
+
+    $created = User::query()->where('email', 'grace@example.com')->first();
+
+    expect($created)->not->toBeNull();
+    expect(Hash::check('front-desk-2026!', $created->password))->toBeTrue();
+});
+
+test('the password must be confirmed', function () {
+    $team = Team::factory()->create();
+    $admin = User::factory()->create();
+    $admin->teams()->attach($team, ['role' => 'admin']);
+    $department = Department::factory()->create(['team_id' => $team->id]);
+
+    $this->actingAs($admin)->post("/{$team->slug}/staff", [
+        'full_name' => 'Mismatch Person',
+        'email' => 'mismatch@example.com',
+        'role' => 'receptionist',
+        'department_id' => $department->id,
+        'employment_date' => now()->toDateString(),
+        'status' => 'active',
+        'password' => 'front-desk-2026!',
+        'password_confirmation' => 'something-else',
+    ])->assertSessionHasErrors('password');
+
+    $this->assertDatabaseMissing('staff', ['email' => 'mismatch@example.com']);
+});
+
+test('staff can be created without a password', function () {
+    $team = Team::factory()->create();
+    $admin = User::factory()->create();
+    $admin->teams()->attach($team, ['role' => 'admin']);
+    $department = Department::factory()->create(['team_id' => $team->id]);
+
+    $this->actingAs($admin)->post("/{$team->slug}/staff", [
+        'full_name' => 'No Password',
+        'email' => 'nopassword@example.com',
+        'role' => 'receptionist',
+        'department_id' => $department->id,
+        'employment_date' => now()->toDateString(),
+        'status' => 'active',
+    ])->assertRedirect("/{$team->slug}/staff");
+
+    $this->assertDatabaseHas('users', ['email' => 'nopassword@example.com']);
+});
+
+test('adding staff never overwrites an existing account password', function () {
+    $team = Team::factory()->create();
+    $admin = User::factory()->create();
+    $admin->teams()->attach($team, ['role' => 'admin']);
+    $department = Department::factory()->create(['team_id' => $team->id]);
+
+    // Somebody who already has a login (e.g. the owner).
+    $existing = User::factory()->create([
+        'email' => 'owner@example.com',
+        'password' => Hash::make('the-real-owner-password'),
+    ]);
+
+    $this->actingAs($admin)->post("/{$team->slug}/staff", [
+        'full_name' => 'Owner Person',
+        'email' => 'owner@example.com',
+        'role' => 'receptionist',
+        'department_id' => $department->id,
+        'employment_date' => now()->toDateString(),
+        'status' => 'active',
+        'password' => 'attacker-chosen-password',
+        'password_confirmation' => 'attacker-chosen-password',
+    ])->assertRedirect("/{$team->slug}/staff");
+
+    $existing->refresh();
+
+    expect(Hash::check('the-real-owner-password', $existing->password))->toBeTrue();
+    expect(Hash::check('attacker-chosen-password', $existing->password))->toBeFalse();
 });

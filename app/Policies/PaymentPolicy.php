@@ -2,7 +2,7 @@
 
 namespace App\Policies;
 
-use App\Enums\TeamRole;
+use App\Enums\Ability;
 use App\Models\Payment;
 use App\Models\Team;
 use App\Models\User;
@@ -14,7 +14,7 @@ class PaymentPolicy
      */
     public function viewAny(User $user, Team $team): bool
     {
-        return $user->belongsToTeam($team);
+        return $user->hasAbility(Ability::ViewPayments, $team);
     }
 
     /**
@@ -22,7 +22,7 @@ class PaymentPolicy
      */
     public function view(User $user, Payment $payment, Team $team): bool
     {
-        return $payment->team_id === $team->id && $user->belongsToTeam($team);
+        return $payment->team_id === $team->id && $user->hasAbility(Ability::ViewPayments, $team);
     }
 
     /**
@@ -30,7 +30,7 @@ class PaymentPolicy
      */
     public function create(User $user, Team $team): bool
     {
-        return $user->belongsToTeam($team);
+        return $user->hasAbility(Ability::RecordPayments, $team);
     }
 
     /**
@@ -38,7 +38,7 @@ class PaymentPolicy
      */
     public function update(User $user, Payment $payment, Team $team): bool
     {
-        return $payment->team_id === $team->id && $this->hasAdminPrivileges($user, $team);
+        return $payment->team_id === $team->id && $user->hasAbility(Ability::ManagePayments, $team);
     }
 
     /**
@@ -46,7 +46,7 @@ class PaymentPolicy
      */
     public function delete(User $user, Payment $payment, Team $team): bool
     {
-        return $payment->team_id === $team->id && $this->hasAdminPrivileges($user, $team);
+        return $payment->team_id === $team->id && $user->hasAbility(Ability::ManagePayments, $team);
     }
 
     /**
@@ -63,12 +63,5 @@ class PaymentPolicy
     public function forceDelete(User $user, Payment $payment): bool
     {
         return false;
-    }
-
-    private function hasAdminPrivileges(User $user, Team $team): bool
-    {
-        $role = $user->teamRole($team);
-
-        return $role?->isAtLeast(TeamRole::Admin) ?? false;
     }
 }

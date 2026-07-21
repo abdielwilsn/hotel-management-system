@@ -47,6 +47,10 @@ class SaveBookingRequest extends FormRequest
             'number_of_guests' => ['required', 'integer', 'min:1', 'max:20'],
             'check_in_date' => ['required', 'date'],
             'check_out_date' => ['required', 'date', 'after:check_in_date'],
+            // The time of day decides how many nights this is; without it an
+            // 08:00 arrival cannot be told from a 05:00 one.
+            'check_in_at' => ['nullable', 'date'],
+            'check_out_at' => ['nullable', 'date', 'after:check_in_at'],
             'status' => ['required', 'in:pending,confirmed,checked_in,checked_out,cancelled'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'discount_type' => ['nullable', 'required_with:discount_value', Rule::in(['percentage', 'fixed'])],

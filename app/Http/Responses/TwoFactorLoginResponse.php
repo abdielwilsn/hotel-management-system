@@ -2,7 +2,7 @@
 
 namespace App\Http\Responses;
 
-use App\Enums\TeamRole;
+use App\Enums\Ability;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\URL;
 use Laravel\Fortify\Contracts\TwoFactorLoginResponse as TwoFactorLoginResponseContract;
@@ -26,9 +26,7 @@ class TwoFactorLoginResponse implements TwoFactorLoginResponseContract
             return new JsonResponse(['two_factor' => false], 200);
         }
 
-        $role = $user->teamRole($team);
-
-        if ($role !== null && ! $role->isAtLeast(TeamRole::Member)) {
+        if (! $user->hasAbility(Ability::AccessHotel, $team)) {
             return redirect()->to("/{$team->slug}/pos");
         }
 

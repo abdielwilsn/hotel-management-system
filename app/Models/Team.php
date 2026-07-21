@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['name', 'slug', 'is_personal', 'currency', 'locale'])]
+#[Fillable(['name', 'slug', 'is_personal', 'currency', 'locale', 'check_in_time', 'check_out_time', 'early_check_in_from'])]
 class Team extends Model
 {
     /** @use HasFactory<TeamFactory> */
@@ -67,7 +67,7 @@ class Team extends Model
     {
         return $this->belongsToMany(User::class, 'team_members', 'team_id', 'user_id')
             ->using(Membership::class)
-            ->withPivot(['role'])
+            ->withPivot(['role', 'data_scope'])
             ->withTimestamps();
     }
 
@@ -109,6 +109,16 @@ class Team extends Model
     public function staff(): HasMany
     {
         return $this->hasMany(Staff::class);
+    }
+
+    /**
+     * Get all incident reports filed on this team.
+     *
+     * @return HasMany<Incident, $this>
+     */
+    public function incidents(): HasMany
+    {
+        return $this->hasMany(Incident::class);
     }
 
     /**

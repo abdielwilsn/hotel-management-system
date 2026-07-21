@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Form, Head, router } from '@inertiajs/vue3';
-import { ChevronDown, Mail, UserPlus, X } from 'lucide-vue-next';
+import { ChevronDown, Mail, ShieldCheck, UserPlus, X } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import CancelInvitationModal from '@/components/CancelInvitationModal.vue';
 import DeleteTeamModal from '@/components/DeleteTeamModal.vue';
@@ -11,6 +11,7 @@ import RemoveMemberModal from '@/components/RemoveMemberModal.vue';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -28,7 +29,10 @@ import {
 import { useInitials } from '@/composables/useInitials';
 import { edit, index, update } from '@/routes/teams';
 import { update as updateMember } from '@/routes/teams/members';
+import { update as updateMemberAccess } from '@/routes/teams/members/access';
 import type {
+    DataScopeOption,
+    Department,
     RoleOption,
     Team,
     TeamInvitation,
@@ -42,6 +46,9 @@ type Props = {
     invitations: TeamInvitation[];
     permissions: TeamPermissions;
     availableRoles: RoleOption[];
+    canManagePermissions: boolean;
+    departments: Pick<Department, 'id' | 'name'>[];
+    dataScopes: DataScopeOption[];
 };
 
 const props = defineProps<Props>();
@@ -96,6 +103,13 @@ const updateMemberRole = (member: TeamMember, newRole: string) => {
     });
 };
 
+const editingAccessFor = ref<number | null>(null);
+
+const toggleAccessEditor = (member: TeamMember) => {
+    editingAccessFor.value =
+        editingAccessFor.value === member.id ? null : member.id;
+};
+
 const confirmRemoveMember = (member: TeamMember) => {
     memberToRemove.value = member;
     removeMemberDialogOpen.value = true;
@@ -144,7 +158,7 @@ const confirmCancelInvitation = (invitation: TeamInvitation) => {
                         id="currency"
                         name="currency"
                         :value="team.currency ?? 'NGN'"
-                        class="border-input bg-background focus-visible:ring-ring h-9 w-full rounded-md border px-3 py-1 text-sm shadow-sm focus-visible:ring-1 focus-visible:outline-none"
+                        class="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
                     >
                         <option
                             v-for="option in currencyOptions"
@@ -203,88 +217,187 @@ const confirmCancelInvitation = (invitation: TeamInvitation) => {
                     v-for="member in members"
                     :key="member.id"
                     data-test="member-row"
-                    class="flex items-center justify-between rounded-lg border p-4"
+                    class="rounded-lg border p-4"
                 >
-                    <div class="flex items-center gap-4">
-                        <Avatar class="h-10 w-10">
-                            <AvatarImage
-                                v-if="member.avatar"
-                                :src="member.avatar"
-                                :alt="member.name"
-                            />
-                            <AvatarFallback>{{
-                                getInitials(member.name)
-                            }}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                            <div class="font-medium">
-                                {{ member.name }}
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-4">
+                            <Avatar class="h-10 w-10">
+                                <AvatarImage
+                                    v-if="member.avatar"
+                                    :src="member.avatar"
+                                    :alt="member.name"
+                                />
+                                <AvatarFallback>{{
+                                    getInitials(member.name)
+                                }}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                                <div class="font-medium">
+                                    {{ member.name }}
+                                </div>
+                                <div class="text-sm text-muted-foreground">
+                                    {{ member.email }}
+                                </div>
                             </div>
-                            <div class="text-sm text-muted-foreground">
-                                {{ member.email }}
-                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <DropdownMenu
+                                v-if="
+                                    member.role !== 'owner' &&
+                                    permissions.canUpdateMember
+                                "
+                            >
+                                <DropdownMenuTrigger as-child>
+                                    <Button
+                                        data-test="member-role-trigger"
+                                        variant="outline"
+                                        size="sm"
+                                    >
+                                        {{ member.role_label }}
+                                        <ChevronDown
+                                            class="ml-2 h-4 w-4 opacity-50"
+                                        />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                    <DropdownMenuItem
+                                        v-for="role in availableRoles"
+                                        :key="role.value"
+                                        data-test="member-role-option"
+                                        @click="
+                                            updateMemberRole(member, role.value)
+                                        "
+                                    >
+                                        {{ role.label }}
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                            <Badge v-else variant="secondary">
+                                {{ member.role_label }}
+                            </Badge>
+
+                            <TooltipProvider
+                                v-if="
+                                    member.role !== 'owner' &&
+                                    permissions.canRemoveMember
+                                "
+                            >
+                                <Tooltip>
+                                    <TooltipTrigger as-child>
+                                        <Button
+                                            data-test="member-remove-button"
+                                            variant="ghost"
+                                            size="sm"
+                                            @click="confirmRemoveMember(member)"
+                                        >
+                                            <X class="h-4 w-4" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Remove member</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+
+                            <Button
+                                v-if="
+                                    canManagePermissions &&
+                                    member.role !== 'owner'
+                                "
+                                data-test="member-access-toggle"
+                                variant="ghost"
+                                size="sm"
+                                @click="toggleAccessEditor(member)"
+                            >
+                                <ShieldCheck class="h-4 w-4" />
+                            </Button>
                         </div>
                     </div>
 
-                    <div class="flex items-center gap-2">
-                        <DropdownMenu
-                            v-if="
-                                member.role !== 'owner' &&
-                                permissions.canUpdateMember
-                            "
-                        >
-                            <DropdownMenuTrigger as-child>
-                                <Button
-                                    data-test="member-role-trigger"
-                                    variant="outline"
-                                    size="sm"
-                                >
-                                    {{ member.role_label }}
-                                    <ChevronDown
-                                        class="ml-2 h-4 w-4 opacity-50"
-                                    />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent>
-                                <DropdownMenuItem
-                                    v-for="role in availableRoles"
-                                    :key="role.value"
-                                    data-test="member-role-option"
-                                    @click="
-                                        updateMemberRole(member, role.value)
-                                    "
-                                >
-                                    {{ role.label }}
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                        <Badge v-else variant="secondary">
-                            {{ member.role_label }}
-                        </Badge>
+                    <!-- What this member can do, and to which departments -->
+                    <Form
+                        v-if="editingAccessFor === member.id"
+                        v-bind="updateMemberAccess.form([team.slug, member.id])"
+                        class="mt-4 space-y-4 border-t pt-4"
+                        data-test="member-access-form"
+                        v-slot="{ errors, processing }"
+                        @success="editingAccessFor = null"
+                    >
+                        <fieldset class="grid gap-2">
+                            <legend class="text-sm font-medium">
+                                Departments
+                            </legend>
+                            <p class="text-sm text-muted-foreground">
+                                Their permissions come from the departments they
+                                work in.
+                            </p>
 
-                        <TooltipProvider
-                            v-if="
-                                member.role !== 'owner' &&
-                                permissions.canRemoveMember
-                            "
-                        >
-                            <Tooltip>
-                                <TooltipTrigger as-child>
-                                    <Button
-                                        data-test="member-remove-button"
-                                        variant="ghost"
-                                        size="sm"
-                                        @click="confirmRemoveMember(member)"
-                                    >
-                                        <X class="h-4 w-4" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                    <p>Remove member</p>
-                                </TooltipContent>
-                            </Tooltip>
-                        </TooltipProvider>
-                    </div>
+                            <p
+                                v-if="departments.length === 0"
+                                class="text-sm text-muted-foreground"
+                            >
+                                This team has no departments yet.
+                            </p>
+
+                            <label
+                                v-for="department in departments"
+                                :key="department.id"
+                                class="flex items-center gap-2 text-sm"
+                            >
+                                <Checkbox
+                                    name="department_ids[]"
+                                    :value="department.id"
+                                    :default-value="
+                                        member.department_ids.includes(
+                                            department.id,
+                                        )
+                                    "
+                                />
+                                {{ department.name }}
+                            </label>
+                            <InputError :message="errors.department_ids" />
+                        </fieldset>
+
+                        <div class="grid gap-2">
+                            <Label :for="`scope-${member.id}`">
+                                Data they can see
+                            </Label>
+                            <select
+                                :id="`scope-${member.id}`"
+                                name="data_scope"
+                                :value="member.data_scope"
+                                class="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+                            >
+                                <option
+                                    v-for="scope in dataScopes"
+                                    :key="scope.value"
+                                    :value="scope.value"
+                                >
+                                    {{ scope.label }}
+                                </option>
+                            </select>
+                            <InputError :message="errors.data_scope" />
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <Button
+                                type="submit"
+                                size="sm"
+                                :disabled="processing"
+                            >
+                                Save access
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                @click="editingAccessFor = null"
+                            >
+                                Cancel
+                            </Button>
+                        </div>
+                    </Form>
                 </div>
             </div>
         </div>

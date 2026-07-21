@@ -2,7 +2,7 @@
 
 namespace App\Policies;
 
-use App\Enums\TeamRole;
+use App\Enums\Ability;
 use App\Models\Department;
 use App\Models\Team;
 use App\Models\User;
@@ -14,7 +14,7 @@ class DepartmentPolicy
      */
     public function viewAny(User $user, Team $team): bool
     {
-        return $user->belongsToTeam($team);
+        return $user->hasAbility(Ability::ViewDepartments, $team);
     }
 
     /**
@@ -22,7 +22,9 @@ class DepartmentPolicy
      */
     public function view(User $user, Department $department, Team $team): bool
     {
-        return $user->belongsToTeam($team) && $department->team_id === $team->id;
+        return $department->team_id === $team->id
+            && $user->hasAbility(Ability::ViewDepartments, $team)
+            && $user->canAccessDepartment($team, $department->id);
     }
 
     /**
@@ -30,7 +32,7 @@ class DepartmentPolicy
      */
     public function create(User $user, Team $team): bool
     {
-        return $this->hasAdminPrivileges($user, $team);
+        return $user->hasAbility(Ability::ManageDepartments, $team);
     }
 
     /**
@@ -39,7 +41,8 @@ class DepartmentPolicy
     public function update(User $user, Department $department, Team $team): bool
     {
         return $department->team_id === $team->id
-            && $this->hasAdminPrivileges($user, $team);
+            && $user->hasAbility(Ability::ManageDepartments, $team)
+            && $user->canAccessDepartment($team, $department->id);
     }
 
     /**
@@ -48,7 +51,8 @@ class DepartmentPolicy
     public function delete(User $user, Department $department, Team $team): bool
     {
         return $department->team_id === $team->id
-            && $this->hasAdminPrivileges($user, $team);
+            && $user->hasAbility(Ability::ManageDepartments, $team)
+            && $user->canAccessDepartment($team, $department->id);
     }
 
     /**
@@ -65,15 +69,5 @@ class DepartmentPolicy
     public function forceDelete(User $user, Department $department): bool
     {
         return false;
-    }
-
-    /**
-     * Determine if the user has at least admin privileges for a team.
-     */
-    protected function hasAdminPrivileges(User $user, Team $team): bool
-    {
-        $role = $user->teamRole($team);
-
-        return $role?->isAtLeast(TeamRole::Admin) ?? false;
     }
 }

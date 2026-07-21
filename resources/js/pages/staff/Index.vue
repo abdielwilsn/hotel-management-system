@@ -1,18 +1,12 @@
 <script setup lang="ts">
-import { useForm, Head, Link, usePage } from '@inertiajs/vue3';
+import { useForm, Link } from '@inertiajs/vue3';
 import { Plus, Users, Trash2, Edit } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
     Dialog,
     DialogContent,
@@ -46,9 +40,6 @@ type Props = {
 
 const props = defineProps<Props>();
 
-const page = usePage();
-const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
-
 defineOptions({
     layout: (props: { currentTeam?: Team | null }) => ({
         breadcrumbs: [
@@ -72,6 +63,8 @@ const form = useForm({
     role: 'receptionist' as StaffRole,
     employment_date: '',
     status: 'active' as StaffStatus,
+    password: '',
+    password_confirmation: '',
 });
 
 const deleteForm = useForm({});
@@ -109,8 +102,8 @@ const submit = () => {
 
 const deleteStaff = () => {
     if (!staffToDelete.value) {
-return;
-}
+        return;
+    }
 
     deleteForm.delete(destroy([props.team.slug, staffToDelete.value.id]).url, {
         onSuccess: () => {
@@ -270,11 +263,51 @@ return;
                         </div>
                     </div>
 
+                    <!-- Login access -->
+                    <div class="rounded-lg border p-4">
+                        <p class="text-sm font-semibold">Login access</p>
+                        <p class="mt-0.5 mb-3 text-xs text-muted-foreground">
+                            Set a password to hand to them directly. Leave both
+                            fields blank to email a password setup link instead.
+                        </p>
+
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div>
+                                <Label for="password">Password</Label>
+                                <Input
+                                    id="password"
+                                    v-model="form.password"
+                                    type="password"
+                                    autocomplete="new-password"
+                                    class="mt-1"
+                                    placeholder="Leave blank to email a link"
+                                />
+                                <InputError
+                                    :message="form.errors.password"
+                                    class="mt-2"
+                                />
+                            </div>
+
+                            <div>
+                                <Label for="password_confirmation">
+                                    Confirm Password
+                                </Label>
+                                <Input
+                                    id="password_confirmation"
+                                    v-model="form.password_confirmation"
+                                    type="password"
+                                    autocomplete="new-password"
+                                    class="mt-1"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="flex gap-2 pt-4">
                         <Button
                             type="submit"
                             :disabled="form.processing"
-                            class="bg-black hover:bg-hotel-primary/90"
+                            class="hover:bg-hotel-primary/90 bg-black"
                         >
                             {{
                                 form.processing

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Departments;
 
+use App\Enums\Ability;
 use App\Models\Department;
 use App\Models\Team;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -42,6 +43,9 @@ class SaveDepartmentRequest extends FormRequest
             ],
             'description' => ['nullable', 'string', 'max:1000'],
             'status' => ['required', Rule::in(['active', 'inactive'])],
+            // Absent when every box is unchecked, which is a valid department.
+            'abilities' => ['nullable', 'array'],
+            'abilities.*' => ['string', Rule::enum(Ability::class)],
             'manager_id' => [
                 'nullable',
                 'integer',

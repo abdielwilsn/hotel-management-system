@@ -2,7 +2,7 @@
 
 namespace App\Http\Responses;
 
-use App\Enums\TeamRole;
+use App\Enums\Ability;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\URL;
 use Laravel\Fortify\Contracts\LoginResponse as LoginResponseContract;
@@ -28,9 +28,7 @@ class LoginResponse implements LoginResponseContract
 
         // POS-only staff cannot reach the dashboard, so send them straight to
         // their point of sale instead of honouring a forbidden intended URL.
-        $role = $user->teamRole($team);
-
-        if ($role !== null && ! $role->isAtLeast(TeamRole::Member)) {
+        if (! $user->hasAbility(Ability::AccessHotel, $team)) {
             return redirect()->to("/{$team->slug}/pos");
         }
 

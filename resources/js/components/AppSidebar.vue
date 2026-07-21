@@ -6,15 +6,16 @@ import {
     BookOpen,
     Building2,
     CalendarDays,
-    Wallet,
     CreditCard,
     Home,
-    Package,
     LayoutGrid,
+    Package,
     ReceiptText,
     Store,
+    TriangleAlert,
     UserRound,
     Users,
+    Wallet,
     Wine,
 } from 'lucide-vue-next';
 import { computed } from 'vue';
@@ -37,6 +38,7 @@ import { index as departments } from '@/routes/departments';
 import { index as expenses } from '@/routes/expenses';
 import { index as forecasts } from '@/routes/forecasts';
 import { index as guests } from '@/routes/guests';
+import { index as incidents } from '@/routes/incidents';
 import { index as inventory } from '@/routes/inventory';
 import { index as invoices } from '@/routes/invoices';
 import { index as payments } from '@/routes/payments';
@@ -86,6 +88,13 @@ const mainNavItems = computed<NavItem[]>(() => [
             ? staff(page.props.currentTeam.slug).url
             : '/',
         icon: Users,
+    },
+    {
+        title: 'Incidents',
+        href: page.props.currentTeam
+            ? incidents(page.props.currentTeam.slug).url
+            : '/',
+        icon: TriangleAlert,
     },
     {
         title: 'Rooms',
@@ -163,8 +172,17 @@ const mainNavItems = computed<NavItem[]>(() => [
 // and the backend routes are gated to admins too, so hide them from the nav.
 const adminOnlyTitles = ['Departments', 'Staff', 'Inventory', 'Expenses'];
 
-const isVisibleNavItem = (item: NavItem) =>
-    isAdmin.value || !adminOnlyTitles.includes(item.title);
+const canViewIncidents = computed(() =>
+    (page.props.abilities ?? []).includes('incidents.view'),
+);
+
+const isVisibleNavItem = (item: NavItem) => {
+    if (item.title === 'Incidents') {
+        return canViewIncidents.value;
+    }
+
+    return isAdmin.value || !adminOnlyTitles.includes(item.title);
+};
 
 const operationsNavItems = computed<NavItem[]>(() =>
     mainNavItems.value.filter(
@@ -173,6 +191,7 @@ const operationsNavItems = computed<NavItem[]>(() =>
                 'Dashboard',
                 'Departments',
                 'Staff',
+                'Incidents',
                 'Rooms',
                 'Guests',
                 'Inventory',

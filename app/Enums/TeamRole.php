@@ -48,6 +48,60 @@ enum TeamRole: string
     }
 
     /**
+     * The abilities a member of this role has when no custom role is assigned.
+     *
+     * These mirror the permissions the application shipped with, so a team that
+     * has never touched the role editor behaves exactly as it always did.
+     *
+     * @return array<int, Ability>
+     */
+    public function defaultAbilities(): array
+    {
+        return match ($this) {
+            self::Owner, self::Admin => Ability::cases(),
+            self::Member => [
+                Ability::AccessHotel,
+                Ability::ViewBookings,
+                Ability::ManageBookings,
+                Ability::RequestDiscounts,
+                Ability::ViewRooms,
+                Ability::ViewGuests,
+                Ability::ManageGuests,
+                Ability::ViewInvoices,
+                Ability::ViewPayments,
+                Ability::RecordPayments,
+                Ability::OperatePos,
+            ],
+            self::Pos => [
+                Ability::OperatePos,
+            ],
+        };
+    }
+
+    /**
+     * The default abilities as plain string values.
+     *
+     * @return array<int, string>
+     */
+    public function defaultAbilityValues(): array
+    {
+        return array_map(fn (Ability $ability) => $ability->value, $this->defaultAbilities());
+    }
+
+    /**
+     * A short description of the role, used when seeding the editable system roles.
+     */
+    public function description(): string
+    {
+        return match ($this) {
+            self::Owner => 'Full access to everything, including billing and team deletion.',
+            self::Admin => 'Manages the hotel day to day, including staff, reports and permissions.',
+            self::Member => 'Front desk and general staff. Handles bookings, guests and payments.',
+            self::Pos => 'Works the bar or restaurant terminal only.',
+        };
+    }
+
+    /**
      * Get the hierarchy level for this role.
      * Higher numbers indicate higher privileges.
      */

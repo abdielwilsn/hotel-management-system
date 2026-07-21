@@ -10,10 +10,16 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { destroy, edit, index, update } from '@/routes/departments';
-import type { DepartmentMember, DepartmentStatus, Team } from '@/types';
+import type {
+    AbilityGroup,
+    DepartmentMember,
+    DepartmentStatus,
+    Team,
+} from '@/types';
 
 type Props = {
     department: {
@@ -22,9 +28,12 @@ type Props = {
         description: string | null;
         status: DepartmentStatus;
         manager_id: number | null;
+        abilities: string[];
     };
     members: DepartmentMember[];
     statuses: DepartmentStatus[];
+    abilityGroups: AbilityGroup[];
+    canManagePermissions: boolean;
     team: {
         id: number;
         slug: string;
@@ -148,6 +157,55 @@ const deleteDepartment = () => {
                         </select>
                         <InputError :message="errors.manager_id" />
                     </div>
+
+                    <!--
+                        A department is the permission group: everyone who works
+                        here can do exactly what is ticked below.
+                    -->
+                    <fieldset
+                        v-if="canManagePermissions"
+                        class="space-y-4 md:col-span-2"
+                    >
+                        <legend class="text-sm font-medium">
+                            What this department can do
+                        </legend>
+                        <p class="text-sm text-muted-foreground">
+                            Everyone assigned to {{ department.name }} gets
+                            these permissions. Changes apply immediately.
+                        </p>
+
+                        <div
+                            v-for="group in abilityGroups"
+                            :key="group.group"
+                            class="space-y-2"
+                        >
+                            <p
+                                class="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+                            >
+                                {{ group.group }}
+                            </p>
+
+                            <div class="grid gap-2 sm:grid-cols-2">
+                                <label
+                                    v-for="ability in group.abilities"
+                                    :key="ability.value"
+                                    class="flex items-center gap-2 text-sm"
+                                >
+                                    <Checkbox
+                                        name="abilities[]"
+                                        :value="ability.value"
+                                        :default-value="
+                                            department.abilities.includes(
+                                                ability.value,
+                                            )
+                                        "
+                                    />
+                                    {{ ability.label }}
+                                </label>
+                            </div>
+                        </div>
+                        <InputError :message="errors.abilities" />
+                    </fieldset>
 
                     <div
                         class="flex flex-wrap items-center gap-3 md:col-span-2"

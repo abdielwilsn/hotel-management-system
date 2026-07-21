@@ -45,6 +45,10 @@ class HandleInertiaRequests extends Middleware
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'currentTeam' => fn () => $user?->currentTeam ? $user->toUserTeam($user->currentTeam) : null,
+            // The UI hides what the user cannot do; the server still decides.
+            'abilities' => fn () => $user?->currentTeam
+                ? $user->teamAbilities($user->currentTeam)->map(fn ($ability) => $ability->value)->values()
+                : [],
             'teams' => fn () => $user?->toUserTeams(includeCurrent: true) ?? [],
         ];
     }
