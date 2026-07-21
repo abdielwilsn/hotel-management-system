@@ -421,8 +421,10 @@ const unusedNights = computed(() => {
     return Math.round((startOfDay(booked) - startOfDay(actual)) / 86400000);
 });
 
+// Any stay that has not already been closed can be checked out: guests leave
+// whether or not anybody remembered to check them in.
 const canCheckoutBooking = (booking: Booking) =>
-    booking.status === 'checked_in';
+    !['checked_out', 'cancelled'].includes(booking.status);
 
 const canExtendBooking = (booking: Booking) =>
     booking.status === 'confirmed' || booking.status === 'checked_in';

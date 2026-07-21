@@ -38,8 +38,14 @@ class CheckoutBookingRequest extends FormRequest
                     return;
                 }
 
-                if ($booking->status !== 'checked_in') {
-                    $validator->errors()->add('settlement_amount', 'Only checked-in bookings can be checked out.');
+                // A guest can leave without ever having been formally checked
+                // in, so any stay that is still running can be closed out. Only
+                // one that is already finished or called off cannot.
+                if (in_array($booking->status, ['checked_out', 'cancelled'], true)) {
+                    $validator->errors()->add(
+                        'settlement_amount',
+                        'This booking is already closed.',
+                    );
 
                     return;
                 }

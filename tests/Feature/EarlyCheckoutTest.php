@@ -210,3 +210,69 @@ test('front desk needs booking rights to check anyone out', function () {
 
     expect($booking->fresh()->status)->toBe('checked_in');
 });
+
+test('a guest can be checked out straight from a reservation that was never checked in', function () {
+    $team = hotelTeam();
+    $room = Room::factory()->for($team)->create(['price_per_night' => 10000, 'status' => 'occupied']);
+    $booking = threeNightStay($team, $room);
+
+    // Never formally checked in — the common case for an advance reservation.
+    $booking->update(['status' => 'confirmed']);
+
+    $manager = User::factory()->create();
+    $manager->teams()->attach($team, ['role' => 'admin']);
+
+    $this->travelTo('2026-05-11 09:30');
+
+    $this->actingAs($manager)
+        ->post("/{$team->slug}/bookings/{$booking->id}/checkout", settlement(30000))
+        ->assertRedirect();
+
+    $booking->refresh();
+
+    expect($booking->status)->toBe('checked_out');
+    expect($booking->checked_out_at->toDateTimeString())->toBe('2026-05-11 09:30:00');
+    expect($room->fresh()->status)->toBe('available');
+});
+
+test('a pending reservation can also be closed out', function () {
+    $team = hotelTeam();
+    $room = Room::factory()->for($team)->create(['price_per_night' => 10000]);
+    $booking = threeNightStay($team, $room);
+    $booking->update(['status' => 'pending']);
+
+    $manager = User::factory()->create();
+    $manager->teams()->attach($team, ['role' => 'admin']);
+
+    $this->travelTo('2026-05-11 09:30');
+
+    $this->actingAs($manager)
+        ->post("/{$team->slug}/bookings/{$booking->id}/checkout", settlement(30000))
+        ->assertRedirect();
+
+    expect($booking->fresh()->status)->toBe('checked_out');
+});
+
+test('a booking that is already checked out cannot be checked out twice', function () {
+    $team = hotelTeam();
+    $room = Room::factory()->for($team)->create(['price_per_night' => 10000]);
+    $booking = threeNightStay($team, $room);
+
+    $manager = User::factory()->create();
+    $manager->teams()->attach($team, ['role' => 'admin']);
+
+    $this->travelTo('2026-05-11 09:30');
+    $this->actingAs($manager)
+        ->post("/{$team->slug}/bookings/{$booking->id}/checkout", settlement(30000));
+
+    $firstDeparture = $booking->fresh()->checked_out_at;
+
+    $this->travelTo('2026-05-11 15:00');
+    $this->actingAs($manager)
+        ->post("/{$team->slug}/bookings/{$booking->id}/checkout", settlement(0))
+        ->assertSessionHasErrors('settlement_amount');
+
+    // The original departure stands.
+    expect($booking->fresh()->checked_out_at->toDateTimeString())
+        ->toBe($firstDeparture->toDateTimeString());
+});
