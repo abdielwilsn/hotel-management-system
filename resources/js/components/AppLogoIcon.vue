@@ -13,16 +13,15 @@ defineProps<Props>();
 </script>
 
 <template>
-    <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
+    <!--
+        The emblem only, on a transparent background. The wordmark in the full
+        lockup is black, so it is rendered as live text instead of baked into
+        the image; that keeps it readable in dark mode.
+    -->
+    <img
+        src="/images/annshaven-mark.png"
+        alt="Ann's Haven"
         :class="className"
         v-bind="$attrs"
-        fill="currentColor"
-    >
-        <!-- Hotel building icon -->
-        <path
-            d="M3 3h18v2H3V3zm0 3h18v13H3V6zm2 2v9h3V8H5zm5 0v9h3V8h-3zm5 0v9h3V8h-3zM3 20h18v1H3v-1z"
-        />
-    </svg>
+    />
 </template>

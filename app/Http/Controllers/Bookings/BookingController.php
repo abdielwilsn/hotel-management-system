@@ -426,16 +426,35 @@ class BookingController extends Controller
                 ]);
             }
 
+            $departedAt = $request->validated('checked_out_at')
+                ? Carbon::parse((string) $request->validated('checked_out_at'))
+                : Carbon::now();
+
             $booking->update([
                 'status' => 'checked_out',
+                'checked_out_at' => $departedAt,
                 'updated_by_user_id' => $actorId,
             ]);
 
+            // Checking out drops the booking out of the active scope, so the
+            // room is sellable again for the nights the guest gave back.
             $this->releaseRoomIfNoActiveBookings($booking->room()->first(), $booking->id);
         });
 
+        $booking->refresh();
+
+        $message = "{$booking->guest_name} has been checked out.";
+
+        if ($booking->departedEarly()) {
+            $unused = $booking->unusedNights();
+
+            $message .= $unused > 0
+                ? " They left {$unused} night(s) early — the bill still covers the full stay."
+                : ' They left ahead of the booked departure time.';
+        }
+
         return redirect()->route('bookings.index', $current_team->slug)
-            ->with('message', "{$booking->guest_name} has been checked out.");
+            ->with('message', $message);
     }
 
     public function extendStay(ExtendBookingStayRequest $request, Team $current_team, Booking $booking, BookingStayService $stays): RedirectResponse

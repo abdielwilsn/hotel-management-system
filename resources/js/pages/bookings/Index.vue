@@ -118,6 +118,7 @@ type Booking = {
         status: string;
         requested_by?: { id: number; name: string } | null;
     } | null;
+    check_out_at?: string | null;
     chargeable_nights?: number | null;
     nights_basis?: string | null;
     active_stay_adjustment?: {
@@ -266,6 +267,7 @@ const processPaymentForm = useForm({
     notes: '',
 });
 const checkoutForm = useForm({
+    checked_out_at: '',
     settlement_amount: '',
     settlement_method: 'cash',
     settlement_payment_date: new Date().toISOString().split('T')[0],
@@ -395,6 +397,30 @@ const bookingMetaLabel = (booking: Booking) =>
 const bookingStayLabel = (booking: Booking) =>
     `${formatDate(booking.check_in_date)} → ${formatDate(booking.check_out_date)}`;
 
+/**
+ * Whole nights between the departure being recorded and the one booked. The
+ * room becomes sellable again for these, but the folio still covers them.
+ */
+const unusedNights = computed(() => {
+    const booking = bookingToCheckout.value;
+
+    if (!booking?.check_out_at || !checkoutForm.checked_out_at) {
+        return 0;
+    }
+
+    const booked = new Date(booking.check_out_at);
+    const actual = new Date(checkoutForm.checked_out_at);
+
+    if (actual >= booked) {
+        return 0;
+    }
+
+    const startOfDay = (d: Date) =>
+        new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+    return Math.round((startOfDay(booked) - startOfDay(actual)) / 86400000);
+});
+
 const canCheckoutBooking = (booking: Booking) =>
     booking.status === 'checked_in';
 
@@ -448,6 +474,11 @@ const openCheckoutDialog = (booking: Booking) => {
     checkoutForm.reset();
     checkoutForm.settlement_amount = bookingBalance(booking).toFixed(2);
     checkoutForm.settlement_method = 'cash';
+    checkoutForm.checked_out_at = new Date(
+        Date.now() - new Date().getTimezoneOffset() * 60000,
+    )
+        .toISOString()
+        .slice(0, 16);
     checkoutForm.settlement_payment_date = new Date()
         .toISOString()
         .split('T')[0];
@@ -1981,6 +2012,41 @@ const deleteBooking = () => {
                 </DialogHeader>
 
                 <form @submit.prevent="checkoutBooking" class="space-y-3">
+                    <div>
+                        <Label for="checked_out_at">Departed At</Label>
+                        <Input
+                            id="checked_out_at"
+                            v-model="checkoutForm.checked_out_at"
+                            type="datetime-local"
+                        />
+                        <InputError
+                            :message="checkoutForm.errors.checked_out_at"
+                            class="mt-2"
+                        />
+                        <p class="mt-2 text-xs text-gray-500">
+                            Defaults to now. Back-date it if the guest left
+                            before anyone noticed.
+                        </p>
+                    </div>
+
+                    <div
+                        v-if="unusedNights > 0"
+                        class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+                    >
+                        <p class="font-medium">
+                            Leaving {{ unusedNights }} night{{
+                                unusedNights > 1 ? 's' : ''
+                            }}
+                            early
+                        </p>
+                        <p class="mt-1">
+                            The room frees up straight away. The bill still
+                            covers the whole stay — use
+                            <strong>Request Different Nights</strong> if those
+                            nights should be waived.
+                        </p>
+                    </div>
+
                     <div>
                         <Label for="checkout_amount">Remaining Balance</Label>
                         <Input

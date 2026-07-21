@@ -34,8 +34,8 @@
             }
         </style>
 
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-        <link rel="shortcut icon" href="/favicon.svg" type="image/svg+xml">
+        <link rel="icon" href="/favicon-256.png" type="image/png" sizes="256x256">
+        <link rel="shortcut icon" href="/favicon-256.png" type="image/png">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
         @fonts

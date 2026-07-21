@@ -30,6 +30,7 @@ class Booking extends Model
         'check_out_date',
         'check_in_at',
         'check_out_at',
+        'checked_out_at',
         'chargeable_nights',
         'nights_basis',
         'price_per_night',
@@ -43,6 +44,7 @@ class Booking extends Model
         'check_out_date' => 'date',
         'check_in_at' => 'datetime',
         'check_out_at' => 'datetime',
+        'checked_out_at' => 'datetime',
         'chargeable_nights' => 'integer',
         'price_per_night' => 'decimal:2',
         'total_amount' => 'decimal:2',
@@ -99,6 +101,36 @@ class Booking extends Model
         return $this->hasOne(BookingDiscount::class)
             ->where('status', 'approved')
             ->latestOfMany();
+    }
+
+    /**
+     * Whether the guest left before the departure they booked.
+     *
+     * Leaving early does not by itself change the bill: the room was held for
+     * the whole stay. It does mean somebody should decide whether to charge for
+     * the unused nights, which is what the stay adjustment flow is for.
+     */
+    public function departedEarly(): bool
+    {
+        if ($this->checked_out_at === null || $this->check_out_at === null) {
+            return false;
+        }
+
+        return $this->checked_out_at->lessThan($this->check_out_at);
+    }
+
+    /**
+     * Nights the guest paid for but did not use, as whole nights.
+     */
+    public function unusedNights(): int
+    {
+        if (! $this->departedEarly()) {
+            return 0;
+        }
+
+        return (int) $this->checked_out_at
+            ->startOfDay()
+            ->diffInDays($this->check_out_at->startOfDay());
     }
 
     public function scopeForTeam(Builder $query, Team $team): Builder

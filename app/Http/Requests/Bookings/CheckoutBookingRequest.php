@@ -16,6 +16,9 @@ class CheckoutBookingRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Defaults to now in the controller. Front desk can back-date it
+            // when a guest dropped the key and left before anyone noticed.
+            'checked_out_at' => ['nullable', 'date', 'before_or_equal:now'],
             'settlement_amount' => ['nullable', 'numeric', 'min:0.01'],
             'settlement_method' => ['nullable', 'in:cash,card,bank_transfer,online,other'],
             'settlement_payment_date' => ['nullable', 'date'],
