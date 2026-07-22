@@ -20,18 +20,21 @@ class DemoUsersSeeder extends Seeder
         );
 
         $owner = $this->upsertUser('Mr. Ndiana', 'admin@annshaven.com');
+        $owner2 = $this->upsertUser('Mr. Ndiana', 'admin2@annshaven.com');
         $ayakang = $this->upsertUser('Ayakang', 'ayakang@annshaven.com');
         $edidiong = $this->upsertUser('Edidiong', 'edidiong@annshaven.com');
         $otobong = $this->upsertUser('Otobong', 'otobong@annshaven.com');
         $imaobong = $this->upsertUser('Ima-Obong', 'imaobong@annshaven.com');
 
         $this->assignToTeam($owner, $hotel, TeamRole::Owner);
+        $this->assignToTeam($owner2, $hotel, TeamRole::Owner);
         $this->assignToTeam($ayakang, $hotel, TeamRole::Member);
         $this->assignToTeam($edidiong, $hotel, TeamRole::Member);
         $this->assignToTeam($otobong, $hotel, TeamRole::Member);
         $this->assignToTeam($imaobong, $hotel, TeamRole::Member);
 
         $owner->switchTeam($hotel);
+        $owner2->switchTeam($hotel);
         $ayakang->switchTeam($hotel);
         $edidiong->switchTeam($hotel);
         $otobong->switchTeam($hotel);
