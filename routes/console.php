@@ -3,6 +3,7 @@
 use App\Support\AnnLedgerImporter;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -17,3 +18,12 @@ Artisan::command('annledger:import {teamSlug?}', function (?string $teamSlug = n
         ->values()
         ->all());
 })->purpose('Import seeded data from Ann\'s Haven Ledger into the HMS app.');
+
+/*
+ * Hand back rooms whose guests were due to leave. Hourly rather than daily so a
+ * room freed at noon is sellable that afternoon, not the next morning.
+ */
+Schedule::command('stays:close-departed')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();

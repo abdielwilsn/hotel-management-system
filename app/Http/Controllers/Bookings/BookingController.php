@@ -18,6 +18,7 @@ use App\Support\BookingDiscountService;
 use App\Support\BookingInvoiceService;
 use App\Support\BookingStayService;
 use App\Support\PaginationMeta;
+use App\Support\StayClosingService;
 use App\Support\StayPolicy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -430,15 +431,10 @@ class BookingController extends Controller
                 ? Carbon::parse((string) $request->validated('checked_out_at'))
                 : Carbon::now();
 
-            $booking->update([
-                'status' => 'checked_out',
-                'checked_out_at' => $departedAt,
-                'updated_by_user_id' => $actorId,
-            ]);
-
             // Checking out drops the booking out of the active scope, so the
-            // room is sellable again for the nights the guest gave back.
-            $this->releaseRoomIfNoActiveBookings($booking->room()->first(), $booking->id);
+            // room is sellable again for the nights the guest gave back. Shared
+            // with the scheduled sweep so both close a stay the same way.
+            app(StayClosingService::class)->close($booking, $departedAt, $actorId);
         });
 
         $booking->refresh();
