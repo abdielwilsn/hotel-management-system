@@ -2,15 +2,19 @@
 
 namespace App\Http\Controllers\Bookings;
 
+use App\Enums\Ability;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Bookings\ReviewBookingDiscountRequest;
 use App\Http\Requests\Bookings\SaveBookingDiscountRequest;
 use App\Models\Booking;
 use App\Models\BookingDiscount;
 use App\Models\Team;
+use App\Notifications\Bookings\DiscountRequested;
+use App\Notifications\Bookings\DiscountReviewed;
 use App\Support\BookingDiscountService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Notification;
 
 class BookingDiscountController extends Controller
 {
@@ -31,6 +35,13 @@ class BookingDiscountController extends Controller
             'reason' => $request->validated('reason'),
         ]);
 
+        if ($discount->status === 'pending') {
+            Notification::send(
+                $current_team->membersWithAbility(Ability::ReviewDiscounts),
+                new DiscountRequested($discount),
+            );
+        }
+
         $message = $discount->status === 'approved'
             ? 'Discount applied to the booking.'
             : 'Discount request submitted for manager approval.';
@@ -50,6 +61,10 @@ class BookingDiscountController extends Controller
 
         $this->discounts->approve($booking, $discount, $request->user(), $request->validated('review_notes'));
 
+        if ($discount->requestedBy) {
+            Notification::send($discount->requestedBy, new DiscountReviewed($discount));
+        }
+
         return redirect()->route('bookings.index', $current_team->slug)
             ->with('message', 'Discount approved.');
     }
@@ -64,6 +79,10 @@ class BookingDiscountController extends Controller
         abort_unless($discount->status === 'pending', 422);
 
         $this->discounts->reject($discount, $request->user(), $request->validated('review_notes'));
+
+        if ($discount->requestedBy) {
+            Notification::send($discount->requestedBy, new DiscountReviewed($discount));
+        }
 
         return redirect()->route('bookings.index', $current_team->slug)
             ->with('message', 'Discount rejected.');

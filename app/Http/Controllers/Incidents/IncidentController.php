@@ -13,10 +13,13 @@ use App\Models\Department;
 use App\Models\Incident;
 use App\Models\Team;
 use App\Models\User;
+use App\Notifications\Incidents\IncidentReported;
+use App\Notifications\Incidents\IncidentResolved;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Notification;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -97,11 +100,16 @@ class IncidentController extends Controller
             403,
         );
 
-        $current_team->incidents()->create([
+        $incident = $current_team->incidents()->create([
             ...$data,
             'status' => IncidentStatus::Open,
             'reported_by_user_id' => $request->user()->id,
         ]);
+
+        Notification::send(
+            $current_team->membersWithAbilityForDepartment(Ability::ResolveIncidents, $incident->department_id),
+            new IncidentReported($incident),
+        );
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Incident reported.')]);
 
@@ -127,6 +135,12 @@ class IncidentController extends Controller
             'resolved_by_user_id' => $status->isOpen() ? null : $request->user()->id,
             'resolved_at' => $status->isOpen() ? null : now(),
         ]);
+
+        // Only a real decision is worth pushing to whoever reported it — moving
+        // between open and investigating is still "somebody's working on it".
+        if (! $status->isOpen() && $incident->reportedBy) {
+            Notification::send($incident->reportedBy, new IncidentResolved($incident));
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Incident updated.')]);
 

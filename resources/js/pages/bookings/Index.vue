@@ -10,6 +10,7 @@ import {
     FileText,
     LayoutList,
     Plus,
+    Printer,
     Trash2,
     Wallet,
     X,
@@ -61,6 +62,7 @@ import {
     reject as rejectStayAdjustment,
     store as storeStayAdjustment,
 } from '@/routes/bookings/stay-adjustments';
+import { receipt as paymentReceipt } from '@/routes/payments';
 import type { Team } from '@/types';
 
 type RoomOption = {
@@ -106,6 +108,23 @@ type Booking = {
             updatedBy?: { id: number; name: string } | null;
         }>;
     } | null;
+    pos_orders?: Array<{
+        id: number;
+        order_number: string;
+        status: string;
+        total: number;
+        served_by: string | null;
+        business_date: string;
+        opened_at: string | null;
+        outlet: { id: number; name: string } | null;
+        items: Array<{
+            id: number;
+            name: string;
+            unit_price: number;
+            quantity: number;
+            line_total: number;
+        }>;
+    }>;
     extension_history?: Array<{
         label: string;
     }>;
@@ -543,6 +562,10 @@ const extensionPreview = computed(() => {
 
 const folioPayments = computed(
     () => bookingToViewFolio.value?.invoice?.payments ?? [],
+);
+
+const folioRoomCharges = computed(
+    () => bookingToViewFolio.value?.pos_orders ?? [],
 );
 
 const folioExtensionHistory = computed(
@@ -1670,7 +1693,7 @@ const deleteBooking = () => {
                 <DialogHeader>
                     <DialogTitle>Guest Folio</DialogTitle>
                     <DialogDescription>
-                        Review the stay summary, payment ledger, and extension
+                        Review the stay summary, payment history, and extension
                         history for
                         <strong>{{ bookingToViewFolio?.guest_name }}</strong
                         >.
@@ -1822,101 +1845,195 @@ const deleteBooking = () => {
                     <div
                         class="grid grid-cols-1 gap-4 lg:grid-cols-[1.5fr_1fr]"
                     >
-                        <div class="rounded border border-gray-200">
-                            <div class="border-b border-gray-200 px-4 py-3">
-                                <h3 class="text-sm font-semibold text-gray-900">
-                                    Payment Ledger
-                                </h3>
-                            </div>
-
-                            <div
-                                v-if="folioPayments.length > 0"
-                                class="divide-y divide-gray-200"
-                            >
-                                <div class="rounded border border-gray-200 p-4">
+                        <div class="space-y-4">
+                            <div class="rounded border border-gray-200">
+                                <div class="border-b border-gray-200 px-4 py-3">
                                     <h3
                                         class="text-sm font-semibold text-gray-900"
                                     >
-                                        Booking Audit
+                                        Room Charges
                                     </h3>
+                                </div>
+
+                                <div
+                                    v-if="folioRoomCharges.length > 0"
+                                    class="divide-y divide-gray-200"
+                                >
                                     <div
-                                        class="mt-3 space-y-1 text-sm text-gray-600"
+                                        v-for="order in folioRoomCharges"
+                                        :key="order.id"
+                                        class="flex items-center justify-between gap-3 px-4 py-3 text-sm"
                                     >
-                                        <p>
-                                            Created by
-                                            {{
-                                                userLabel(
-                                                    bookingToViewFolio.createdBy,
-                                                )
-                                            }}
-                                        </p>
-                                        <p>
-                                            Last action by
-                                            {{
-                                                userLabel(
-                                                    bookingToViewFolio.updatedBy ??
-                                                        bookingToViewFolio.createdBy,
-                                                )
-                                            }}
-                                        </p>
+                                        <div>
+                                            <p
+                                                class="font-medium text-gray-900"
+                                            >
+                                                {{
+                                                    order.outlet?.name ??
+                                                    'Outlet'
+                                                }}
+                                                ·
+                                                {{ order.order_number }}
+                                            </p>
+                                            <p class="text-gray-500">
+                                                {{
+                                                    formatDate(
+                                                        order.business_date,
+                                                    )
+                                                }}
+                                                <span v-if="order.served_by">
+                                                    · Served by
+                                                    {{ order.served_by }}
+                                                </span>
+                                            </p>
+                                            <p
+                                                v-for="item in order.items"
+                                                :key="item.id"
+                                                class="text-xs text-gray-500"
+                                            >
+                                                {{ item.quantity }} ×
+                                                {{ item.name }} —
+                                                {{
+                                                    formatCurrency(
+                                                        Number(item.line_total),
+                                                    )
+                                                }}
+                                            </p>
+                                        </div>
+
+                                        <div class="text-right">
+                                            <p
+                                                class="font-medium text-gray-900"
+                                            >
+                                                {{
+                                                    formatCurrency(
+                                                        Number(order.total),
+                                                    )
+                                                }}
+                                            </p>
+                                            <p class="text-xs text-gray-500">
+                                                {{ statusLabel(order.status) }}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
-                                <div
-                                    v-for="payment in folioPayments"
-                                    :key="payment.id"
-                                    class="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-                                >
-                                    <div>
-                                        <p class="font-medium text-gray-900">
-                                            {{ payment.payment_number }}
-                                        </p>
-                                        <p class="text-gray-500">
-                                            {{
-                                                formatDate(payment.payment_date)
-                                            }}
-                                            ·
-                                            {{
-                                                paymentMethodLabel(
-                                                    payment.method,
-                                                )
-                                            }}
-                                        </p>
-                                        <p
-                                            v-if="payment.reference"
-                                            class="text-xs text-gray-500"
-                                        >
-                                            Ref: {{ payment.reference }}
-                                        </p>
-                                        <p class="text-xs text-gray-500">
-                                            Created by
-                                            {{ userLabel(payment.createdBy) }}
-                                            <span v-if="payment.updatedBy">
-                                                · Last action by
-                                                {{
-                                                    userLabel(payment.updatedBy)
-                                                }}
-                                            </span>
-                                        </p>
-                                    </div>
 
-                                    <div class="text-right">
-                                        <p class="font-medium text-gray-900">
-                                            {{
-                                                formatCurrency(
-                                                    Number(payment.amount),
-                                                )
-                                            }}
-                                        </p>
-                                        <p class="text-xs text-gray-500">
-                                            {{ statusLabel(payment.status) }}
-                                        </p>
-                                    </div>
+                                <div
+                                    v-else
+                                    class="px-4 py-6 text-sm text-gray-500"
+                                >
+                                    No room charges have been posted from POS
+                                    outlets for this stay.
                                 </div>
                             </div>
 
-                            <div v-else class="px-4 py-6 text-sm text-gray-500">
-                                No payments have been recorded for this stay
-                                yet.
+                            <div class="rounded border border-gray-200">
+                                <div class="border-b border-gray-200 px-4 py-3">
+                                    <h3
+                                        class="text-sm font-semibold text-gray-900"
+                                    >
+                                        Payment History
+                                    </h3>
+                                </div>
+
+                                <div
+                                    v-if="folioPayments.length > 0"
+                                    class="divide-y divide-gray-200"
+                                >
+                                    <div
+                                        v-for="payment in folioPayments"
+                                        :key="payment.id"
+                                        class="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                                    >
+                                        <div>
+                                            <p
+                                                class="font-medium text-gray-900"
+                                            >
+                                                {{ payment.payment_number }}
+                                            </p>
+                                            <p class="text-gray-500">
+                                                {{
+                                                    formatDate(
+                                                        payment.payment_date,
+                                                    )
+                                                }}
+                                                ·
+                                                {{
+                                                    paymentMethodLabel(
+                                                        payment.method,
+                                                    )
+                                                }}
+                                            </p>
+                                            <p
+                                                v-if="payment.reference"
+                                                class="text-xs text-gray-500"
+                                            >
+                                                Ref: {{ payment.reference }}
+                                            </p>
+                                            <p class="text-xs text-gray-500">
+                                                Created by
+                                                {{
+                                                    userLabel(payment.createdBy)
+                                                }}
+                                                <span v-if="payment.updatedBy">
+                                                    · Last action by
+                                                    {{
+                                                        userLabel(
+                                                            payment.updatedBy,
+                                                        )
+                                                    }}
+                                                </span>
+                                            </p>
+                                        </div>
+
+                                        <div class="flex items-center gap-3">
+                                            <div class="text-right">
+                                                <p
+                                                    class="font-medium text-gray-900"
+                                                >
+                                                    {{
+                                                        formatCurrency(
+                                                            Number(
+                                                                payment.amount,
+                                                            ),
+                                                        )
+                                                    }}
+                                                </p>
+                                                <p
+                                                    class="text-xs text-gray-500"
+                                                >
+                                                    {{
+                                                        statusLabel(
+                                                            payment.status,
+                                                        )
+                                                    }}
+                                                </p>
+                                            </div>
+                                            <Link
+                                                :href="
+                                                    paymentReceipt([
+                                                        props.team.slug,
+                                                        payment.id,
+                                                    ]).url
+                                                "
+                                                target="_blank"
+                                                rel="noopener"
+                                                class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                            >
+                                                <Printer class="h-3.5 w-3.5" />
+                                                Reprint
+                                            </Link>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div
+                                    v-else
+                                    class="px-4 py-6 text-sm text-gray-500"
+                                >
+                                    No payments have been recorded for this stay
+                                    yet.
+                                </div>
                             </div>
                         </div>
 

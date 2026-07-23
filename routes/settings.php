@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Controllers\Settings\NotificationSettingsController;
 use App\Http\Controllers\Settings\ProfileController;
+use App\Http\Controllers\Settings\PushSubscriptionController;
 use App\Http\Controllers\Settings\SecurityController;
 use App\Http\Controllers\Teams\TeamController;
 use App\Http\Controllers\Teams\TeamInvitationController;
@@ -25,6 +27,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('user-password.update');
 
     Route::inertia('settings/appearance', 'settings/Appearance')->name('appearance.edit');
+
+    // Not "settings/notifications" — that URI collides with the team-scoped
+    // notifications inbox at "{current_team}/notifications" (defined in
+    // web.php), since a leading wildcard segment matches any literal,
+    // including "settings", and would 404 on team lookup.
+    Route::get('settings/notification-preferences', [NotificationSettingsController::class, 'edit'])->name('notification-settings.edit');
+    Route::post('settings/push-subscriptions', [PushSubscriptionController::class, 'store'])->name('push-subscriptions.store');
+    Route::delete('settings/push-subscriptions', [PushSubscriptionController::class, 'destroy'])->name('push-subscriptions.destroy');
 
     Route::get('settings/teams', [TeamController::class, 'index'])->name('teams.index');
     Route::post('settings/teams', [TeamController::class, 'store'])->name('teams.store');

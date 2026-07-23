@@ -2,10 +2,14 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\Ability;
 use App\Models\Booking;
+use App\Notifications\Bookings\BookingNeedsSettlement;
 use App\Support\StayClosingService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 
 /**
  * Close out stays whose departure time has passed.
@@ -28,7 +32,7 @@ class CloseDepartedStays extends Command
             ->whereNotIn('status', ['checked_out', 'cancelled'])
             ->whereNotNull('check_out_at')
             ->where('check_out_at', '<=', now())
-            ->with(['invoice', 'room'])
+            ->with(['invoice', 'room', 'team'])
             ->get();
 
         if ($departed->isEmpty()) {
@@ -76,8 +80,39 @@ class CloseDepartedStays extends Command
                     number_format($stays->outstandingBalance($booking), 2),
                 ])->all(),
             );
+
+            if (! $dryRun) {
+                $this->notifyOwing($owing, $stays);
+            }
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Alert front desk to bookings that are past departure and still owe
+     * money — once per booking, not on every hourly run.
+     *
+     * @param  Collection<int, Booking>  $owing
+     */
+    private function notifyOwing($owing, StayClosingService $stays): void
+    {
+        foreach ($owing as $booking) {
+            if ($booking->notified_needs_settlement_at !== null) {
+                continue;
+            }
+
+            Notification::send(
+                $booking->team->membersWithAbility(Ability::ManageBookings),
+                new BookingNeedsSettlement($booking, $stays->outstandingBalance($booking)),
+            );
+
+            // Query builder update — bypasses the fillable guard and, more
+            // importantly, doesn't touch updated_at, which nothing here is
+            // measuring anyway.
+            Booking::query()->whereKey($booking->id)->update([
+                'notified_needs_settlement_at' => now(),
+            ]);
+        }
     }
 }

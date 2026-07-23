@@ -50,6 +50,10 @@ class HandleInertiaRequests extends Middleware
                 ? $user->teamAbilities($user->currentTeam)->map(fn ($ability) => $ability->value)->values()
                 : [],
             'teams' => fn () => $user?->toUserTeams(includeCurrent: true) ?? [],
+            // Scoped to the current team, matching the notifications inbox itself.
+            'unreadNotificationsCount' => fn () => $user?->currentTeam
+                ? $user->unreadNotifications()->where('data->team_id', $user->currentTeam->id)->count()
+                : 0,
         ];
     }
 }

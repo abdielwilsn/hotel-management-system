@@ -9,9 +9,12 @@ use App\Http\Requests\Bookings\ReviewStayAdjustmentRequest;
 use App\Models\Booking;
 use App\Models\BookingStayAdjustment;
 use App\Models\Team;
+use App\Notifications\Bookings\StayAdjustmentRequested;
+use App\Notifications\Bookings\StayAdjustmentReviewed;
 use App\Support\BookingStayService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Notification;
 
 /**
  * Requests to bill a stay for a different number of nights than the house
@@ -38,6 +41,13 @@ class BookingStayAdjustmentController extends Controller
             $request->validated('reason'),
         );
 
+        if ($adjustment->status === 'pending') {
+            Notification::send(
+                $current_team->membersWithAbility(Ability::ReviewStayAdjustments),
+                new StayAdjustmentRequested($adjustment),
+            );
+        }
+
         $message = $adjustment->status === 'approved'
             ? 'Stay re-priced at '.$adjustment->requested_nights.' night(s).'
             : 'Sent to a manager for approval.';
@@ -54,7 +64,11 @@ class BookingStayAdjustmentController extends Controller
     ): RedirectResponse {
         $this->authorizeReview($current_team, $booking, $adjustment);
 
-        $this->stays->approve($current_team, $adjustment, $request->user(), $request->validated('review_notes'));
+        $adjustment = $this->stays->approve($current_team, $adjustment, $request->user(), $request->validated('review_notes'));
+
+        if ($adjustment->requestedBy) {
+            Notification::send($adjustment->requestedBy, new StayAdjustmentReviewed($adjustment));
+        }
 
         return redirect()->route('bookings.index', $current_team->slug)
             ->with('message', 'Night count approved.');
@@ -68,7 +82,11 @@ class BookingStayAdjustmentController extends Controller
     ): RedirectResponse {
         $this->authorizeReview($current_team, $booking, $adjustment);
 
-        $this->stays->reject($current_team, $adjustment, $request->user(), $request->validated('review_notes'));
+        $adjustment = $this->stays->reject($current_team, $adjustment, $request->user(), $request->validated('review_notes'));
+
+        if ($adjustment->requestedBy) {
+            Notification::send($adjustment->requestedBy, new StayAdjustmentReviewed($adjustment));
+        }
 
         return redirect()->route('bookings.index', $current_team->slug)
             ->with('message', 'Night count left as the policy worked it out.');

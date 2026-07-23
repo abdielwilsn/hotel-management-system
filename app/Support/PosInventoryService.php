@@ -2,13 +2,23 @@
 
 namespace App\Support;
 
+use App\Enums\Ability;
 use App\Models\PosMenuItem;
 use App\Models\PosOrder;
 use App\Models\PosStockMovement;
+use App\Notifications\Pos\MenuItemStockLow;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 
 class PosInventoryService
 {
+    /**
+     * Below this, front desk/the outlet should reorder; at or below zero, the
+     * item can't be sold at all. One constant for every item for now — simple
+     * and good enough until a specific item needs its own bar.
+     */
+    private const LOW_STOCK_THRESHOLD = 5;
+
     /**
      * Apply a stock movement: adjust the item's running on-hand quantity and
      * append a ledger row recording the resulting balance. This is the single
@@ -29,6 +39,8 @@ class PosInventoryService
 
             $item->update(['stock_quantity' => $balanceAfter]);
 
+            $this->notifyIfCrossedLowStock($item, $current, $balanceAfter);
+
             return PosStockMovement::query()->create([
                 'team_id' => $item->team_id,
                 'pos_outlet_id' => $item->pos_outlet_id,
@@ -45,6 +57,39 @@ class PosInventoryService
                 'business_date' => $meta['business_date'] ?? now()->toDateString(),
             ]);
         });
+    }
+
+    /**
+     * Alert the outlet/its managers only when a movement crosses into "low" or
+     * "out" territory — not on every sale while it's already below the mark,
+     * or receiving stock would spam the same alert on every delivery too.
+     */
+    private function notifyIfCrossedLowStock(PosMenuItem $item, int $before, int $after): void
+    {
+        if (! $item->track_stock) {
+            return;
+        }
+
+        $level = match (true) {
+            $after <= 0 && $before > 0 => 'out',
+            $after <= self::LOW_STOCK_THRESHOLD && $before > self::LOW_STOCK_THRESHOLD => 'low',
+            default => null,
+        };
+
+        if ($level === null) {
+            return;
+        }
+
+        $team = $item->team;
+
+        if ($team === null) {
+            return;
+        }
+
+        Notification::send(
+            $team->membersWithAbility(Ability::ManagePos),
+            new MenuItemStockLow($item, $level),
+        );
     }
 
     /**

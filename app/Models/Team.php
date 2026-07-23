@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Concerns\GeneratesUniqueTeamSlugs;
+use App\Enums\Ability;
 use App\Enums\TeamRole;
 use Database\Factories\TeamFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -11,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Collection;
 
 #[Fillable(['name', 'slug', 'is_personal', 'currency', 'locale', 'check_in_time', 'check_out_time', 'early_check_in_from'])]
 class Team extends Model
@@ -79,6 +81,36 @@ class Team extends Model
     public function memberships(): HasMany
     {
         return $this->hasMany(Membership::class);
+    }
+
+    /**
+     * Every member on this team holding the given ability — the audience for
+     * a notification about something that ability lets you act on.
+     *
+     * @return Collection<int, User>
+     */
+    public function membersWithAbility(Ability $ability): Collection
+    {
+        return $this->memberships()
+            ->with('user')
+            ->get()
+            ->filter(fn (Membership $membership) => $membership->user->hasAbility($ability, $this))
+            ->pluck('user')
+            ->values();
+    }
+
+    /**
+     * As membersWithAbility, further narrowed to whoever can also access the
+     * given department — abilities granted at department level don't reach
+     * across departments they weren't granted for.
+     *
+     * @return Collection<int, User>
+     */
+    public function membersWithAbilityForDepartment(Ability $ability, ?int $departmentId): Collection
+    {
+        return $this->membersWithAbility($ability)
+            ->filter(fn (User $user) => $user->canAccessDepartment($this, $departmentId))
+            ->values();
     }
 
     /**

@@ -90,6 +90,27 @@ class BookingController extends Controller
                         },
                     ]);
                 },
+                'posOrders' => function ($query): void {
+                    $query
+                        ->where('charge_type', 'room')
+                        ->select([
+                            'pos_orders.id',
+                            'pos_orders.booking_id',
+                            'pos_orders.pos_outlet_id',
+                            'pos_orders.order_number',
+                            'pos_orders.status',
+                            'pos_orders.total',
+                            'pos_orders.served_by',
+                            'pos_orders.business_date',
+                            'pos_orders.opened_at',
+                        ])
+                        ->with([
+                            'outlet:id,name',
+                            'items:id,pos_order_id,name,unit_price,quantity,line_total',
+                        ])
+                        ->orderByDesc('business_date')
+                        ->orderByDesc('id');
+                },
             ])
             ->when($filters['search'] ?? null, function (Builder $query, string $search): void {
                 $query->where(function (Builder $subQuery) use ($search): void {

@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { Search } from 'lucide-vue-next';
+import { Link, usePage } from '@inertiajs/vue3';
+import { Bell, Search } from 'lucide-vue-next';
+import { computed } from 'vue';
 import Breadcrumbs from '@/components/Breadcrumbs.vue';
 import { SidebarTrigger } from '@/components/ui/sidebar';
-import type { BreadcrumbItem } from '@/types';
+import { index as notificationsIndex } from '@/routes/notifications';
+import type { BreadcrumbItem, Team } from '@/types';
 
 withDefaults(
     defineProps<{
@@ -11,6 +14,12 @@ withDefaults(
     {
         breadcrumbs: () => [],
     },
+);
+
+const page = usePage();
+const currentTeam = computed<Team | null>(() => page.props.currentTeam ?? null);
+const unreadNotificationsCount = computed(
+    () => page.props.unreadNotificationsCount ?? 0,
 );
 
 const openSearch = () => {
@@ -28,6 +37,25 @@ const openSearch = () => {
                 <Breadcrumbs :breadcrumbs="breadcrumbs" />
             </template>
         </div>
+
+        <Link
+            v-if="currentTeam"
+            :href="notificationsIndex(currentTeam.slug).url"
+            class="relative flex items-center justify-center rounded-lg border border-sidebar-border/70 p-2 text-muted-foreground transition-colors hover:bg-accent"
+            aria-label="Notifications"
+        >
+            <Bell class="size-4" />
+            <span
+                v-if="unreadNotificationsCount > 0"
+                class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-white"
+            >
+                {{
+                    unreadNotificationsCount > 99
+                        ? '99+'
+                        : unreadNotificationsCount
+                }}
+            </span>
+        </Link>
 
         <button
             type="button"

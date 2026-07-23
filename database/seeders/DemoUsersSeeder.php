@@ -20,7 +20,7 @@ class DemoUsersSeeder extends Seeder
         );
 
         $owner = $this->upsertUser('Mr. Ndiana', 'admin@annshaven.com');
-        $owner2 = $this->upsertUser('Mr. Ndiana', 'admin2@annshaven.com');
+        $owner2 = $this->upsertUser('Imabong', 'admin2@annshaven.com');
         $ayakang = $this->upsertUser('Ayakang', 'ayakang@annshaven.com');
         $edidiong = $this->upsertUser('Edidiong', 'edidiong@annshaven.com');
         $otobong = $this->upsertUser('Otobong', 'otobong@annshaven.com');

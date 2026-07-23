@@ -5,7 +5,9 @@ use App\Models\PosOutlet;
 use App\Models\PosStockMovement;
 use App\Models\Team;
 use App\Models\User;
+use App\Notifications\Pos\MenuItemStockLow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 
 uses(RefreshDatabase::class);
 
@@ -125,6 +127,86 @@ test('non-tracked items are never blocked by stock', function () {
             'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 99]],
         ])
         ->assertRedirect();
+});
+
+test('a sale that drops stock to the low threshold notifies managers once', function () {
+    Notification::fake();
+    [$team, $user, $outlet] = posInventoryContext();
+    $item = trackedItem($team, $outlet, 7);
+
+    $this->actingAs($user)->post("/{$team->slug}/pos/{$outlet->id}/orders", [
+        'charge_type' => 'walk_in',
+        'payment_mode' => 'cash',
+        'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 2]],
+    ]);
+
+    expect($item->fresh()->stock_quantity)->toBe(5);
+    Notification::assertSentTo(
+        $user,
+        fn (MenuItemStockLow $notification) => $notification->level === 'low',
+    );
+
+    // Already at/below the threshold — selling more shouldn't re-fire "low".
+    Notification::fake();
+    $this->actingAs($user)->post("/{$team->slug}/pos/{$outlet->id}/orders", [
+        'charge_type' => 'walk_in',
+        'payment_mode' => 'cash',
+        'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+    ]);
+
+    Notification::assertNothingSent();
+});
+
+test('a sale that empties stock notifies managers that the item is out', function () {
+    Notification::fake();
+    [$team, $user, $outlet] = posInventoryContext();
+    $item = trackedItem($team, $outlet, 3);
+
+    $this->actingAs($user)->post("/{$team->slug}/pos/{$outlet->id}/orders", [
+        'charge_type' => 'walk_in',
+        'payment_mode' => 'cash',
+        'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 3]],
+    ]);
+
+    expect($item->fresh()->stock_quantity)->toBe(0);
+    Notification::assertSentTo(
+        $user,
+        fn (MenuItemStockLow $notification) => $notification->level === 'out',
+    );
+});
+
+test('non-tracked items never trigger a low-stock notification', function () {
+    Notification::fake();
+    [$team, $user, $outlet] = posInventoryContext();
+    $item = PosMenuItem::factory()->create([
+        'team_id' => $team->id,
+        'pos_outlet_id' => $outlet->id,
+        'price' => 1000,
+        'track_stock' => false,
+        'stock_quantity' => 0,
+    ]);
+
+    $this->actingAs($user)->post("/{$team->slug}/pos/{$outlet->id}/orders", [
+        'charge_type' => 'walk_in',
+        'payment_mode' => 'cash',
+        'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 5]],
+    ]);
+
+    Notification::assertNothingSent();
+});
+
+test('receiving stock back above the threshold does not notify', function () {
+    Notification::fake();
+    [$team, $user, $outlet] = posInventoryContext();
+    $item = trackedItem($team, $outlet, 2);
+
+    $this->actingAs($user)->post("/{$team->slug}/pos/{$outlet->id}/stock/receive", [
+        'pos_menu_item_id' => $item->id,
+        'quantity' => 24,
+        'business_date' => now()->toDateString(),
+    ]);
+
+    Notification::assertNothingSent();
 });
 
 test('the end-of-day count corrects on-hand and logs an adjustment', function () {

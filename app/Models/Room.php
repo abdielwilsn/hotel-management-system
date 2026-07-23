@@ -27,6 +27,7 @@ class Room extends Model
     protected $casts = [
         'price_per_night' => 'decimal:2',
         'features' => 'array',
+        'status_alerted_at' => 'datetime',
     ];
 
     public function team(): BelongsTo

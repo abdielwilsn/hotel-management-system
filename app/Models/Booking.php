@@ -45,6 +45,7 @@ class Booking extends Model
         'check_in_at' => 'datetime',
         'check_out_at' => 'datetime',
         'checked_out_at' => 'datetime',
+        'notified_needs_settlement_at' => 'datetime',
         'chargeable_nights' => 'integer',
         'price_per_night' => 'decimal:2',
         'total_amount' => 'decimal:2',
@@ -81,6 +82,14 @@ class Booking extends Model
     public function discounts(): HasMany
     {
         return $this->hasMany(BookingDiscount::class);
+    }
+
+    /**
+     * @return HasMany<PosOrder, $this>
+     */
+    public function posOrders(): HasMany
+    {
+        return $this->hasMany(PosOrder::class);
     }
 
     /**

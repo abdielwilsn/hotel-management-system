@@ -27,3 +27,38 @@ Schedule::command('stays:close-departed')
     ->hourly()
     ->withoutOverlapping()
     ->runInBackground();
+
+/*
+ * A guest checking out today with an unpaid bar tab still on the folio is
+ * worth flagging before the desk gets to checkout, not just after.
+ */
+Schedule::command('pos:flag-unsettled-room-charges')
+    ->everyFourHours()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+/*
+ * A room forgotten in maintenance or cleaning is either a housekeeping
+ * oversight or a turnover risk for the next guest.
+ */
+Schedule::command('rooms:flag-stale-status')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+/*
+ * Nothing else in the app ever marks an invoice overdue — this is that.
+ */
+Schedule::command('invoices:flag-overdue')
+    ->dailyAt('01:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+/*
+ * Occupancy/collection/profitability risk, pushed instead of left for
+ * whoever remembers to open the Forecasts page.
+ */
+Schedule::command('forecasts:daily-digest')
+    ->dailyAt('07:00')
+    ->withoutOverlapping()
+    ->runInBackground();

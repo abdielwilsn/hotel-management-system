@@ -101,6 +101,7 @@ test('an order charged to a room is posted onto the booking invoice', function (
         'room_id' => $room->id,
         'guest_name' => 'Ada Lovelace',
         'status' => 'checked_in',
+        'total_amount' => 0,
     ]);
 
     $item = PosMenuItem::factory()->create(['team_id' => $team->id, 'pos_outlet_id' => $outlet->id, 'price' => 1500, 'track_stock' => false]);
@@ -118,10 +119,72 @@ test('an order charged to a room is posted onto the booking invoice', function (
     expect($order->charge_type)->toBe('room');
     expect($order->booking_id)->toBe($booking->id);
     expect($order->room_number)->toBe(204);
+    // Not paid at the till — it's sitting on the guest's folio until front
+    // desk settles it.
+    expect($order->status)->toBe('pending');
+    expect($order->paid_at)->toBeNull();
 
     $this->assertDatabaseHas('invoices', [
         'booking_id' => $booking->id,
         'total_amount' => 3000,
+    ]);
+});
+
+test('a room charge is added on top of the room rate, not in place of it', function () {
+    [$team, $user, $outlet] = posSellingContext();
+
+    $room = Room::factory()->create(['team_id' => $team->id]);
+    $booking = Booking::factory()->create([
+        'team_id' => $team->id,
+        'room_id' => $room->id,
+        'status' => 'checked_in',
+        'total_amount' => 500,
+    ]);
+
+    $item = PosMenuItem::factory()->create(['team_id' => $team->id, 'pos_outlet_id' => $outlet->id, 'price' => 300, 'track_stock' => false]);
+
+    $this->actingAs($user)->post("/{$team->slug}/pos/{$outlet->id}/orders", [
+        'charge_type' => 'room',
+        'payment_mode' => 'room',
+        'booking_id' => $booking->id,
+        'items' => [
+            ['pos_menu_item_id' => $item->id, 'quantity' => 1],
+        ],
+    ]);
+
+    $this->assertDatabaseHas('invoices', [
+        'booking_id' => $booking->id,
+        'total_amount' => 800,
+    ]);
+});
+
+test('two room charges against the same booking both accumulate onto the invoice', function () {
+    [$team, $user, $outlet] = posSellingContext();
+
+    $room = Room::factory()->create(['team_id' => $team->id]);
+    $booking = Booking::factory()->create([
+        'team_id' => $team->id,
+        'room_id' => $room->id,
+        'status' => 'checked_in',
+        'total_amount' => 0,
+    ]);
+
+    $item = PosMenuItem::factory()->create(['team_id' => $team->id, 'pos_outlet_id' => $outlet->id, 'price' => 300, 'track_stock' => false]);
+
+    $payload = [
+        'charge_type' => 'room',
+        'payment_mode' => 'room',
+        'booking_id' => $booking->id,
+        'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+    ];
+
+    $this->actingAs($user)->post("/{$team->slug}/pos/{$outlet->id}/orders", $payload)->assertRedirect();
+    $this->actingAs($user)->post("/{$team->slug}/pos/{$outlet->id}/orders", $payload)->assertRedirect();
+
+    expect(PosOrder::query()->where('booking_id', $booking->id)->count())->toBe(2);
+    $this->assertDatabaseHas('invoices', [
+        'booking_id' => $booking->id,
+        'total_amount' => 600,
     ]);
 });
 

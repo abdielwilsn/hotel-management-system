@@ -3,6 +3,8 @@
 use App\Models\Booking;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\PosOrder;
+use App\Models\PosOutlet;
 use App\Models\Room;
 use App\Models\Team;
 use App\Models\User;
@@ -607,7 +609,7 @@ test('bookings index includes folio payment lines and extension history', functi
         'status' => 'partially_paid',
     ]);
 
-    Payment::factory()->create([
+    $payment = Payment::factory()->create([
         'team_id' => $team->id,
         'invoice_id' => $invoice->id,
         'payment_number' => 'PAY-FOLIO-1001',
@@ -624,7 +626,65 @@ test('bookings index includes folio payment lines and extension history', functi
             ->where('bookings.0.id', $booking->id)
             ->where('bookings.0.invoice.invoice_number', 'INV-FOLIO-1001')
             ->where('bookings.0.invoice.payments.0.payment_number', 'PAY-FOLIO-1001')
+            // The payment id is what the folio's "Reprint" link is built from,
+            // so it must survive the eager-load select.
+            ->where('bookings.0.invoice.payments.0.id', $payment->id)
             ->where('bookings.0.extension_history.0.label', 'Added one extra night'));
+});
+
+test('a payment made against a booking can be reprinted from its receipt route', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+    $room = Room::factory()->create(['team_id' => $team->id]);
+
+    $booking = Booking::factory()->create([
+        'team_id' => $team->id,
+        'room_id' => $room->id,
+        'status' => 'checked_in',
+    ]);
+
+    $invoice = Invoice::factory()->create([
+        'team_id' => $team->id,
+        'booking_id' => $booking->id,
+        'total_amount' => 300,
+        'paid_amount' => 300,
+    ]);
+
+    // Several payments can be made against the same booking's invoice; each
+    // one keeps its own reprintable receipt.
+    $firstPayment = Payment::factory()->create([
+        'team_id' => $team->id,
+        'invoice_id' => $invoice->id,
+        'payment_number' => 'PAY-REPRINT-1001',
+        'payment_date' => '2026-09-01',
+        'amount' => 100,
+        'status' => 'completed',
+    ]);
+
+    $secondPayment = Payment::factory()->create([
+        'team_id' => $team->id,
+        'invoice_id' => $invoice->id,
+        'payment_number' => 'PAY-REPRINT-1002',
+        'payment_date' => '2026-09-02',
+        'amount' => 200,
+        'status' => 'completed',
+    ]);
+
+    $bookingResponse = $this->actingAs($user)->get("/{$team->slug}/bookings");
+    $bookingResponse->assertInertia(fn (Assert $page) => $page
+        ->where('bookings.0.invoice.payments.0.payment_number', 'PAY-REPRINT-1002')
+        ->where('bookings.0.invoice.payments.1.payment_number', 'PAY-REPRINT-1001'));
+
+    foreach ([$firstPayment, $secondPayment] as $payment) {
+        $this->actingAs($user)
+            ->get("/{$team->slug}/payments/{$payment->id}/receipt")
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('payments/Receipt')
+                ->where('payment.id', $payment->id)
+                ->where('payment.payment_number', $payment->payment_number));
+    }
 });
 
 test('the bookings list shows the newest booking first', function () {
@@ -656,4 +716,85 @@ test('the bookings list shows the newest booking first', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->where('bookings.0.id', $newest->id)
             ->where('bookings.1.id', $oldest->id));
+});
+
+test('bookings index includes the outlet and items for a room-charge POS order', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+    $room = Room::factory()->create(['team_id' => $team->id]);
+    $outlet = PosOutlet::factory()->bar()->create(['team_id' => $team->id, 'name' => 'Poolside Bar']);
+
+    $booking = Booking::factory()->create([
+        'team_id' => $team->id,
+        'room_id' => $room->id,
+        'status' => 'checked_in',
+    ]);
+
+    $order = PosOrder::factory()->create([
+        'team_id' => $team->id,
+        'pos_outlet_id' => $outlet->id,
+        'booking_id' => $booking->id,
+        'charge_type' => 'room',
+        'status' => 'pending',
+        'order_number' => 'BAR-ROOM-0001',
+        'total' => 900,
+    ]);
+
+    $order->items()->create([
+        'name' => 'Club Sandwich',
+        'unit_price' => 450,
+        'quantity' => 2,
+        'line_total' => 900,
+    ]);
+
+    $this->actingAs($user)
+        ->get("/{$team->slug}/bookings")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('bookings.0.pos_orders.0.order_number', 'BAR-ROOM-0001')
+            ->where('bookings.0.pos_orders.0.status', 'pending')
+            ->where('bookings.0.pos_orders.0.total', '900.00')
+            ->where('bookings.0.pos_orders.0.outlet.name', 'Poolside Bar')
+            ->where('bookings.0.pos_orders.0.items.0.name', 'Club Sandwich')
+            ->where('bookings.0.pos_orders.0.items.0.quantity', 2)
+            ->where('bookings.0.pos_orders.0.items.0.line_total', '900.00'));
+});
+
+test('a room-charge order for a different booking does not leak into this booking\'s folio', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create();
+    $user->teams()->attach($team, ['role' => 'member']);
+    $room = Room::factory()->create(['team_id' => $team->id]);
+    $outlet = PosOutlet::factory()->bar()->create(['team_id' => $team->id]);
+
+    $thisBooking = Booking::factory()->create(['team_id' => $team->id, 'room_id' => $room->id]);
+    $otherBooking = Booking::factory()->create(['team_id' => $team->id, 'room_id' => $room->id]);
+
+    PosOrder::factory()->create([
+        'team_id' => $team->id,
+        'pos_outlet_id' => $outlet->id,
+        'booking_id' => $thisBooking->id,
+        'charge_type' => 'room',
+        'order_number' => 'BAR-ROOM-0002',
+    ]);
+
+    PosOrder::factory()->create([
+        'team_id' => $team->id,
+        'pos_outlet_id' => $outlet->id,
+        'booking_id' => $otherBooking->id,
+        'charge_type' => 'room',
+        'order_number' => 'BAR-ROOM-0003',
+    ]);
+
+    $this->actingAs($user)
+        ->get("/{$team->slug}/bookings")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('bookings.0.id', $otherBooking->id)
+            ->where('bookings.0.pos_orders.0.order_number', 'BAR-ROOM-0003')
+            ->where('bookings.0.pos_orders', fn ($orders) => count($orders) === 1)
+            ->where('bookings.1.id', $thisBooking->id)
+            ->where('bookings.1.pos_orders.0.order_number', 'BAR-ROOM-0002')
+            ->where('bookings.1.pos_orders', fn ($orders) => count($orders) === 1));
 });

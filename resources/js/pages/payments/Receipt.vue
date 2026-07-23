@@ -34,18 +34,15 @@ type Props = {
     team: { id: number; slug: string; name: string };
 };
 
-const props = defineProps<Props>();
+defineProps<Props>();
 
-defineOptions({
-    layout: null,
-});
-
+// This screen renders without app chrome — see the `payments/Receipt` case in app.ts.
 const { formatCurrency } = useFormatters();
 
 const formatDate = (value: string) =>
     new Date(value).toLocaleDateString('en-US', {
         year: 'numeric',
-        month: 'long',
+        month: 'short',
         day: 'numeric',
     });
 
@@ -54,170 +51,192 @@ const formatLabel = (value: string) =>
 
 const userLabel = (user?: { name: string } | null) => user?.name ?? 'System';
 
+const printReceipt = () => window.print();
+
 onMounted(() => {
-    window.print();
+    // Give the DOM a tick to paint before opening the print dialog.
+    window.setTimeout(() => window.print(), 300);
 });
 </script>
 
 <template>
     <Head :title="`Receipt ${payment.payment_number}`" />
 
-    <main
-        class="mx-auto max-w-3xl bg-slate-50 p-4 sm:p-8 print:max-w-none print:bg-white print:p-0"
-    >
-        <div class="mb-4 flex items-center justify-end gap-2 print:hidden">
-            <button
-                type="button"
-                class="inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-                @click="window.print()"
-            >
-                Print Again
+    <div class="receipt-screen">
+        <div class="receipt-actions">
+            <button type="button" class="action-button" @click="printReceipt">
+                Print again
             </button>
-            <Link
-                :href="bookingIndex(team.slug).url"
-                class="inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-            >
-                Back to Bookings
+            <Link :href="bookingIndex(team.slug).url" class="action-button">
+                Back to bookings
             </Link>
-            <Link
-                :href="paymentIndex(team.slug).url"
-                class="inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-            >
+            <Link :href="paymentIndex(team.slug).url" class="action-button">
                 Payments
             </Link>
         </div>
 
-        <section
-            class="rounded-xl border border-slate-200 bg-white p-8 shadow-sm print:rounded-none print:border-0 print:p-0 print:shadow-none"
-        >
-            <header class="border-b border-slate-200 pb-5">
-                <div class="flex items-start justify-between gap-4">
-                    <div>
-                        <p
-                            class="text-xs tracking-[0.25em] text-slate-500 uppercase"
-                        >
-                            Receipt
-                        </p>
-                        <h1 class="mt-2 text-2xl font-bold text-slate-900">
-                            {{ team.name }}
-                        </h1>
-                    </div>
-                    <div class="text-right">
-                        <p class="text-xs text-slate-500 uppercase">
-                            Receipt Number
-                        </p>
-                        <p class="text-sm font-semibold text-slate-900">
-                            {{ payment.payment_number }}
-                        </p>
-                        <p class="mt-2 text-xs text-slate-500 uppercase">
-                            Payment Date
-                        </p>
-                        <p class="text-sm font-medium text-slate-800">
-                            {{ formatDate(payment.payment_date) }}
-                        </p>
-                    </div>
-                </div>
-            </header>
-
-            <div
-                class="grid gap-4 border-b border-slate-200 py-5 sm:grid-cols-2"
-            >
-                <div>
-                    <p class="text-xs text-slate-500 uppercase">
-                        Received From
-                    </p>
-                    <p class="mt-1 text-base font-semibold text-slate-900">
-                        {{ payment.invoice?.guest_name ?? 'Walk-in guest' }}
-                    </p>
-                    <p class="text-sm text-slate-600">
-                        {{
-                            payment.invoice?.guest_email ?? 'No email provided'
-                        }}
-                    </p>
-                </div>
-                <div>
-                    <p class="text-xs text-slate-500 uppercase">Invoice</p>
-                    <p class="mt-1 text-base font-semibold text-slate-900">
-                        {{
-                            payment.invoice?.invoice_number ??
-                            'Unlinked payment'
-                        }}
-                    </p>
-                    <p class="text-sm text-slate-600">
-                        Status: {{ formatLabel(payment.status) }}
-                    </p>
-                </div>
+        <div class="receipt">
+            <div class="center">
+                <p class="title">{{ team.name }}</p>
+                <p class="muted uppercase">Payment Receipt</p>
             </div>
 
-            <div class="space-y-3 py-5">
-                <div
-                    class="flex items-center justify-between text-sm text-slate-700"
-                >
-                    <span>Payment Method</span>
-                    <span class="font-medium text-slate-900">{{
-                        formatLabel(payment.method)
-                    }}</span>
-                </div>
-                <div
-                    class="flex items-center justify-between text-sm text-slate-700"
-                >
-                    <span>Amount Paid</span>
-                    <span class="text-lg font-bold text-emerald-700">{{
-                        formatCurrency(payment.amount)
-                    }}</span>
-                </div>
-                <div
-                    class="flex items-center justify-between text-sm text-slate-700"
-                >
-                    <span>Reference</span>
-                    <span class="font-medium text-slate-900">{{
-                        payment.reference ?? 'N/A'
-                    }}</span>
-                </div>
-                <div
-                    v-if="payment.invoice"
-                    class="flex items-center justify-between text-sm text-slate-700"
-                >
-                    <span>Invoice Balance</span>
-                    <span class="font-medium text-slate-900">
-                        {{
-                            formatCurrency(
-                                Math.max(
-                                    Number(payment.invoice.total_amount) -
-                                        Number(payment.invoice.paid_amount),
-                                    0,
-                                ),
-                            )
-                        }}
-                    </span>
-                </div>
-                <div
-                    class="flex items-center justify-between text-sm text-slate-700"
-                >
-                    <span>Created By</span>
-                    <span class="font-medium text-slate-900">{{
-                        userLabel(payment.createdBy)
-                    }}</span>
-                </div>
-                <div
-                    class="flex items-center justify-between text-sm text-slate-700"
-                >
-                    <span>Last Action By</span>
-                    <span class="font-medium text-slate-900">{{
-                        userLabel(payment.updatedBy ?? payment.createdBy)
-                    }}</span>
-                </div>
+            <hr />
+
+            <div class="row muted">
+                <span>Receipt</span><span>{{ payment.payment_number }}</span>
+            </div>
+            <div class="row muted">
+                <span>Date</span><span>{{ formatDate(payment.payment_date) }}</span>
+            </div>
+            <div class="row muted">
+                <span>Guest</span>
+                <span>{{ payment.invoice?.guest_name ?? 'Walk-in guest' }}</span>
+            </div>
+            <div v-if="payment.invoice" class="row muted">
+                <span>Invoice</span><span>{{ payment.invoice.invoice_number }}</span>
             </div>
 
-            <footer class="border-t border-slate-200 pt-5">
-                <p class="text-xs text-slate-500">
-                    Thank you for your payment.
-                </p>
-                <p class="mt-1 text-xs text-slate-400">
-                    Generated by {{ team.name }} Hotel Management System ·
-                    Created by {{ userLabel(payment.createdBy) }}
-                </p>
-            </footer>
-        </section>
-    </main>
+            <hr />
+
+            <div class="row">
+                <span>Method</span><span>{{ formatLabel(payment.method) }}</span>
+            </div>
+            <div v-if="payment.reference" class="row muted small">
+                <span>Reference</span><span>{{ payment.reference }}</span>
+            </div>
+            <div class="row muted">
+                <span>Status</span><span>{{ formatLabel(payment.status) }}</span>
+            </div>
+
+            <hr />
+
+            <div class="row total">
+                <span>AMOUNT PAID</span
+                ><span>{{ formatCurrency(payment.amount) }}</span>
+            </div>
+            <div v-if="payment.invoice" class="row muted small">
+                <span>Invoice balance</span>
+                <span>{{
+                    formatCurrency(
+                        Math.max(
+                            Number(payment.invoice.total_amount) -
+                                Number(payment.invoice.paid_amount),
+                            0,
+                        ),
+                    )
+                }}</span>
+            </div>
+
+            <hr />
+
+            <div class="row muted small">
+                <span>Created by</span><span>{{ userLabel(payment.createdBy) }}</span>
+            </div>
+            <div class="row muted small">
+                <span>Last action by</span>
+                <span>{{ userLabel(payment.updatedBy ?? payment.createdBy) }}</span>
+            </div>
+
+            <hr />
+
+            <p class="center muted small">Thank you for your payment.</p>
+        </div>
+    </div>
 </template>
+
+<style scoped>
+.receipt-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem 1rem;
+    background: #f3f4f6;
+    min-height: 100vh;
+}
+
+.receipt-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.action-button {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 0.375rem;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #374151;
+}
+
+.action-button:hover {
+    background: #f3f4f6;
+}
+
+.receipt {
+    width: 80mm;
+    max-width: 100%;
+    background: #fff;
+    padding: 6mm 5mm;
+    color: #000;
+    font-family: 'Courier New', ui-monospace, monospace;
+    font-size: 12px;
+    line-height: 1.45;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.center {
+    text-align: center;
+}
+.uppercase {
+    text-transform: uppercase;
+}
+.title {
+    font-size: 15px;
+    font-weight: 700;
+}
+.muted {
+    color: #333;
+}
+.small {
+    font-size: 10px;
+}
+.row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+.total {
+    font-size: 14px;
+    font-weight: 700;
+}
+hr {
+    border: none;
+    border-top: 1px dashed #000;
+    margin: 6px 0;
+}
+
+@media print {
+    .receipt-screen {
+        background: #fff;
+        padding: 0;
+        min-height: auto;
+    }
+    .receipt-actions {
+        display: none;
+    }
+    .receipt {
+        width: auto;
+        box-shadow: none;
+        padding: 0;
+    }
+    @page {
+        margin: 4mm;
+    }
+}
+</style>

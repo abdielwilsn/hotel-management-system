@@ -4,7 +4,10 @@ use App\Models\Booking;
 use App\Models\Invoice;
 use App\Models\Room;
 use App\Models\Team;
+use App\Models\User;
+use App\Notifications\Bookings\BookingNeedsSettlement;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 
 uses(RefreshDatabase::class);
 
@@ -140,4 +143,29 @@ test('already closed and cancelled stays are ignored', function () {
 
     expect($closed->fresh()->checked_out_at->toDateTimeString())->toBe('2026-05-11 11:00:00');
     expect($cancelled->fresh()->status)->toBe('cancelled');
+});
+
+test('a stay that still owes money notifies managers once, not on every run', function () {
+    Notification::fake();
+
+    $team = Team::factory()->create();
+    $manager = User::factory()->create();
+    $manager->teams()->attach($team, ['role' => 'admin']);
+    $room = Room::factory()->for($team)->create(['status' => 'occupied']);
+    $booking = departedStay($team, $room, total: 10000, paid: 2500);
+
+    $this->travelTo('2026-05-12 08:00');
+
+    $this->artisan('stays:close-departed')->assertSuccessful();
+
+    Notification::assertSentTo(
+        $manager,
+        fn (BookingNeedsSettlement $notification) => $notification->booking->is($booking) && $notification->balance === 7500.0,
+    );
+    expect($booking->fresh()->notified_needs_settlement_at)->not->toBeNull();
+
+    Notification::fake();
+    $this->artisan('stays:close-departed')->assertSuccessful();
+
+    Notification::assertNothingSent();
 });

@@ -12,6 +12,7 @@ use App\Http\Controllers\Guests\GuestController;
 use App\Http\Controllers\Incidents\IncidentController;
 use App\Http\Controllers\Inventory\InventoryController;
 use App\Http\Controllers\Invoices\InvoiceController;
+use App\Http\Controllers\Notifications\NotificationController;
 use App\Http\Controllers\Payments\PaymentController;
 use App\Http\Controllers\Pos\PosController;
 use App\Http\Controllers\Pos\PosMenuController;
@@ -32,6 +33,14 @@ Route::inertia('/', 'Welcome')->name('home');
 Route::prefix('{current_team}')
     ->middleware(['auth', 'verified', EnsureTeamMembership::class])
     ->group(function () {
+        /*
+         * Every team member sees their own notifications for this team,
+         * regardless of role — the same broad access incidents get below.
+         */
+        Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
+        Route::patch('notifications/{notification}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read');
+        Route::post('notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
+
         /*
          * Point of Sale — Bar & Restaurant operations.
          * Open to any team member, including the restricted POS-staff role. Access to a

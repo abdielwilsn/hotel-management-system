@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Booking;
 use App\Models\Invoice;
+use App\Models\PosOrder;
 use App\Models\Team;
 use Carbon\Carbon;
 
@@ -22,9 +23,18 @@ class BookingInvoiceService
      */
     public function sync(Team $team, Booking $booking): Invoice
     {
-        $subtotal = round((float) $booking->total_amount, 2);
-        $discountAmount = $this->approvedDiscountAmount($booking, $subtotal);
-        $totalAmount = round(max($subtotal - $discountAmount, 0), 2);
+        $roomSubtotal = round((float) $booking->total_amount, 2);
+        // The discount was negotiated against the room rate, not the guest's
+        // bar tab, so it applies before POS charges are added on top.
+        $discountAmount = $this->approvedDiscountAmount($booking, $roomSubtotal);
+        // Summed regardless of the order's own status — that status is a
+        // display flag for whether it's been settled, not whether it counts
+        // toward the bill. Recomputed from scratch every time so a charge
+        // can never be dropped by a later sync().
+        $posChargesTotal = round((float) $booking->posOrders()->where('charge_type', 'room')->sum('total'), 2);
+
+        $subtotal = round($roomSubtotal + $posChargesTotal, 2);
+        $totalAmount = round(max($roomSubtotal - $discountAmount, 0) + $posChargesTotal, 2);
 
         /** @var Invoice $invoice */
         $invoice = $team->invoices()->firstOrCreate(
@@ -66,10 +76,23 @@ class BookingInvoiceService
             ->where('status', 'completed')
             ->sum('amount');
 
+        $status = $invoice->statusFor($paidAmount);
+
         $invoice->update([
             'paid_amount' => round($paidAmount, 2),
-            'status' => $invoice->statusFor($paidAmount),
+            'status' => $status,
         ]);
+
+        // Once the whole bill is paid, any POS charges the front desk was
+        // carrying against the room have been settled too — flip them so
+        // they stop showing as outstanding on the folio.
+        if ($status === 'paid') {
+            PosOrder::query()
+                ->where('booking_id', $invoice->booking_id)
+                ->where('charge_type', 'room')
+                ->where('status', 'pending')
+                ->update(['status' => 'paid', 'paid_at' => now()]);
+        }
     }
 
     /**

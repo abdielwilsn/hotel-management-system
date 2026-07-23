@@ -5,12 +5,12 @@ namespace App\Http\Controllers\Pos;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Pos\StorePosOrderRequest;
 use App\Models\Booking;
-use App\Models\Invoice;
 use App\Models\PosMenuItem;
 use App\Models\PosOrder;
 use App\Models\PosOutlet;
 use App\Models\PosStockRecord;
 use App\Models\Team;
+use App\Support\BookingInvoiceService;
 use App\Support\PosInventoryService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -67,11 +67,16 @@ class PosOrderController extends Controller
                 ];
             }
 
+            // A room charge isn't paid yet — it's just been routed to the
+            // guest's folio to be settled at checkout. A walk-in sale was
+            // paid for on the spot.
+            $isRoomCharge = $validated['charge_type'] === 'room';
+
             $order = PosOrder::query()->create([
                 'team_id' => $current_team->id,
                 'pos_outlet_id' => $pos_outlet->id,
                 'order_number' => $this->nextOrderNumber($pos_outlet, $businessDate),
-                'status' => 'paid',
+                'status' => $isRoomCharge ? 'pending' : 'paid',
                 'charge_type' => $validated['charge_type'],
                 'booking_id' => $booking?->id,
                 'room_number' => $booking?->room?->room_number,
@@ -82,7 +87,7 @@ class PosOrderController extends Controller
                 'served_by' => $validated['served_by'] ?? $request->user()->name,
                 'business_date' => $businessDate,
                 'opened_at' => now(),
-                'paid_at' => now(),
+                'paid_at' => $isRoomCharge ? null : now(),
             ]);
 
             foreach ($lines as $line) {
@@ -104,7 +109,7 @@ class PosOrderController extends Controller
             }
 
             if ($booking !== null) {
-                $this->postToBookingFolio($current_team, $booking, $order);
+                $this->postToBookingFolio($current_team, $booking);
             }
 
             return $order;
@@ -184,30 +189,14 @@ class PosOrderController extends Controller
     }
 
     /**
-     * Post the order total onto the guest's folio (their booking invoice) at checkout.
+     * Fold this room charge into the guest's folio via the same invoice-sync
+     * path every other booking mutation uses, so the charge is recomputed
+     * from the linked pos_orders rather than bumped by hand — that's what
+     * keeps it from being wiped out the next time the invoice is synced.
      */
-    private function postToBookingFolio(Team $team, Booking $booking, PosOrder $order): void
+    private function postToBookingFolio(Team $team, Booking $booking): void
     {
-        /** @var Invoice $invoice */
-        $invoice = $booking->invoice()->first() ?? Invoice::query()->create([
-            'team_id' => $team->id,
-            'booking_id' => $booking->id,
-            'invoice_number' => 'INV-'.strtoupper(bin2hex(random_bytes(3))),
-            'guest_name' => $booking->guest_name,
-            'guest_email' => $booking->guest_email,
-            'issue_date' => now()->toDateString(),
-            'due_date' => now()->toDateString(),
-            'subtotal' => 0,
-            'tax_amount' => 0,
-            'discount_amount' => 0,
-            'total_amount' => 0,
-            'paid_amount' => 0,
-            'status' => 'issued',
-        ]);
-
-        $invoice->subtotal = round((float) $invoice->subtotal + (float) $order->total, 2);
-        $invoice->total_amount = round((float) $invoice->total_amount + (float) $order->total, 2);
-        $invoice->save();
+        app(BookingInvoiceService::class)->sync($team, $booking);
     }
 
     /**

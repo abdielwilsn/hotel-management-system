@@ -25,6 +25,8 @@ declare module '@inertiajs/core' {
             teams: Team[];
             /** Ability values the user holds on their current team. */
             abilities: string[];
+            /** Unread notification count, scoped to the current team. */
+            unreadNotificationsCount: number;
             [key: string]: unknown;
         };
     }

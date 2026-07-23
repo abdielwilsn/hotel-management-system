@@ -7,6 +7,7 @@ use App\Http\Requests\Payments\SavePaymentRequest;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Team;
+use App\Support\BookingInvoiceService;
 use App\Support\PaginationMeta;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -216,27 +217,7 @@ class PaymentController extends Controller
 
     private function refreshInvoicePaidAmount(Invoice $invoice): void
     {
-        $paidAmount = (float) $invoice->payments()
-            ->where('status', 'completed')
-            ->sum('amount');
-
-        $totalAmount = (float) $invoice->total_amount;
-        $status = $invoice->status;
-
-        if ($paidAmount <= 0 && $status !== 'void') {
-            $status = 'issued';
-        } elseif ($paidAmount > 0 && $paidAmount < $totalAmount) {
-            $status = 'partially_paid';
-        }
-
-        if ($paidAmount >= $totalAmount && $totalAmount > 0) {
-            $status = 'paid';
-        }
-
-        $invoice->update([
-            'paid_amount' => round($paidAmount, 2),
-            'status' => $status,
-        ]);
+        app(BookingInvoiceService::class)->refreshPaidAmount($invoice);
     }
 
     private function generatePaymentNumber(Team $team): string
